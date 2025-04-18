@@ -9,28 +9,18 @@ import {
   RelationOperationsCard,
   TripleOperationsCard,
 } from "./_components";
-import { Graph, Ipfs, Relation, Triple } from "@graphprotocol/grc-20";
+import { Graph, Id, Ipfs, Relation, Triple } from "@graphprotocol/grc-20";
 import { useAccount, useWaitForTransactionReceipt } from "wagmi";
 import { useTransactor } from "~~/hooks/scaffold-eth";
-
-// Helper function to generate UUIDs
-const generateID = () => {
-  // Generate a random string similar to KG IDs (simplified version)
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let result = "";
-  for (let i = 0; i < 22; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
-};
 
 // Note: The RELATION type is primarily for property definitions and not directly for Triple values
 type ValueType = "TEXT" | "NUMBER" | "URL" | "TIME" | "POINT" | "CHECKBOX";
 
-// Generate specific types of IDs
-const generateEntityID = () => generateID();
-const generateAttributeID = () => generateID();
-const generateRelationTypeID = () => generateID();
+// Generate specific types of IDs using the SDK's Id class
+const generateEntityID = () => Id.generate();
+const generateAttributeID = () => Id.generate();
+const generateRelationTypeID = () => Id.generate();
+const generateID = () => Id.generate();
 
 const KnowledgeGraph = () => {
   const { address: connectedAddress } = useAccount();
