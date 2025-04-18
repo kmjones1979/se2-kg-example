@@ -4,9 +4,10 @@ import React, { useCallback, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { GraphQLSkipDirective } from "graphql";
 import { hardhat } from "viem/chains";
 import { Bars3Icon, BugAntIcon } from "@heroicons/react/24/outline";
-import { MagnifyingGlassIcon } from "@heroicons/react/24/outline";
+import { GlobeAmericasIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
 import { FaucetButton, RainbowKitCustomConnectButton } from "~~/components/scaffold-eth";
 import { useOutsideClick, useTargetNetwork } from "~~/hooks/scaffold-eth";
 
@@ -25,6 +26,11 @@ export const menuLinks: HeaderMenuLink[] = [
     label: "Subgraph",
     href: "/subgraph",
     icon: <MagnifyingGlassIcon className="h-4 w-4" />,
+  },
+  {
+    label: "Knowledge Graph",
+    href: "/knowledge-graph",
+    icon: <GlobeAmericasIcon className="h-4 w-4" />,
   },
   {
     label: "Debug Contracts",

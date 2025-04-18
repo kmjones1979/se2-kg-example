@@ -17,6 +17,9 @@
     "vercel:yolo": "vercel --build-env YARN_ENABLE_IMMUTABLE_INSTALLS=false --build-env ENABLE_EXPERIMENTAL_COREPACK=1 --build-env NEXT_PUBLIC_IGNORE_BUILD_ERROR=true --build-env VERCEL_TELEMETRY_DISABLED=1"
   },
   "dependencies": {
+    "@ethersproject/solidity": "^5.8.0",
+    "@ethersproject/strings": "^5.8.0",
+    "@graphprotocol/grc-20": "^0.11.2",
     "@heroicons/react": "~2.1.5",
     "@rainbow-me/rainbowkit": "2.2.3",
     "@tanstack/react-query": "~5.59.15",
@@ -25,7 +28,9 @@
     "blo": "~1.2.0",
     "burner-connector": "0.0.12",
     "daisyui": "4.12.10",
-    "graphql": "~16.8.1",
+    "ethers": "5.7.2",
+    "graphql": "^16.6.0",
+    "graphql-request": "^7.1.2",
     "kubo-rpc-client": "~5.0.2",
     "next": "~15.2.3",
     "next-nprogress-bar": "~2.3.13",
