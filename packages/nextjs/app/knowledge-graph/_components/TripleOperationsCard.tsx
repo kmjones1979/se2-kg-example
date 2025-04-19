@@ -1,26 +1,46 @@
 import { useState } from "react";
+import { useGraphIds, useGraphOperations } from "../_hooks";
 import { ValueType as GraphValueType, Triple } from "@graphprotocol/grc-20";
 
 // Local value type definitions (including RELATION which is used in the UI but handled specially)
 type LocalValueType = GraphValueType | "RELATION";
 
 interface TripleOperationsCardProps {
-  entityId: string;
-  attributeId: string;
-  addOperation: (op: any) => void;
-  setStatus: (status: string) => void;
-  handleGenerateEntityID: () => void;
-  handleGenerateAttributeID: () => void;
+  // Traditional props for backward compatibility
+  entityId?: string;
+  attributeId?: string;
+  addOperation?: (op: any) => void;
+  setStatus?: (status: string) => void;
+  handleGenerateEntityID?: () => void;
+  handleGenerateAttributeID?: () => void;
+
+  // Optional hook integration
+  useCustomHooks?: boolean;
 }
 
 export const TripleOperationsCard = ({
-  entityId,
-  attributeId,
+  entityId: propEntityId,
+  attributeId: propAttributeId,
   addOperation,
-  setStatus,
+  setStatus: propSetStatus,
   handleGenerateEntityID,
   handleGenerateAttributeID,
+  useCustomHooks = false,
 }: TripleOperationsCardProps) => {
+  // Internal state for ID values if not using props
+  const [internalEntityId, setInternalEntityId] = useState("");
+  const [internalAttributeId, setInternalAttributeId] = useState("");
+
+  // Optionally use our custom hooks
+  const { generateEntityId, generateAttributeId } = useGraphIds();
+  const { addTriple, removeTriple, setStatus: hookSetStatus } = useGraphOperations();
+
+  // Use either props or internal state based on component mode
+  const entityId = propEntityId || internalEntityId;
+  const attributeId = propAttributeId || internalAttributeId;
+  const setStatus = propSetStatus || hookSetStatus || console.log;
+
+  // Value state
   const [textValue, setTextValue] = useState("");
   const [valueType, setValueType] = useState<LocalValueType>("TEXT");
   const [numberValue, setNumberValue] = useState<number | "">("");
@@ -29,6 +49,23 @@ export const TripleOperationsCard = ({
   const [pointValue, setPointValue] = useState("");
   const [checkboxValue, setCheckboxValue] = useState(false);
   const [relationValue, setRelationValue] = useState("");
+
+  // Generate ID handlers for internal mode
+  const handleGenerateEntityIdInternal = () => {
+    const id = generateEntityId();
+    setInternalEntityId(id);
+    setStatus(`Generated Entity ID: ${id}`);
+  };
+
+  const handleGenerateAttributeIdInternal = () => {
+    const id = generateAttributeId();
+    setInternalAttributeId(id);
+    setStatus(`Generated Attribute ID: ${id}`);
+  };
+
+  // Use either provided handlers or internal ones
+  const generateEntityHandler = handleGenerateEntityID || handleGenerateEntityIdInternal;
+  const generateAttributeHandler = handleGenerateAttributeID || handleGenerateAttributeIdInternal;
 
   const getCurrentValue = () => {
     switch (valueType) {
@@ -64,16 +101,41 @@ export const TripleOperationsCard = ({
       return;
     }
 
-    const setTripleOp = Triple.make({
-      entityId,
-      attributeId,
-      value: {
-        type: valueType === "RELATION" ? "TEXT" : valueType,
-        value: currentValue,
-      },
-    });
-    addOperation(setTripleOp);
-    setStatus(`Added Triple operation with ${valueType} value`);
+    const value = {
+      type: valueType === "RELATION" ? "TEXT" : (valueType as GraphValueType),
+      value: currentValue,
+    };
+
+    try {
+      // If using custom hooks, use the hook directly
+      if (useCustomHooks) {
+        addTriple(entityId, attributeId, value);
+      } else {
+        // Otherwise use the traditional approach
+        const setTripleOp = Triple.make({
+          entityId,
+          attributeId,
+          value,
+        });
+
+        if (addOperation) {
+          addOperation(setTripleOp);
+        }
+      }
+
+      setStatus(`Added Triple operation with ${valueType} value`);
+
+      // Clear form values
+      if (valueType === "TEXT") setTextValue("");
+      else if (valueType === "NUMBER") setNumberValue("");
+      else if (valueType === "URL") setUrlValue("");
+      else if (valueType === "TIME") setTimeValue("");
+      else if (valueType === "POINT") setPointValue("");
+      else if (valueType === "RELATION") setRelationValue("");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setStatus(`Error adding triple: ${errorMessage}`);
+    }
   };
 
   const removeTripleOp = () => {
@@ -82,12 +144,27 @@ export const TripleOperationsCard = ({
       return;
     }
 
-    const deleteTripleOp = Triple.remove({
-      entityId,
-      attributeId,
-    });
-    addOperation(deleteTripleOp);
-    setStatus(`Added Delete Triple operation`);
+    try {
+      // If using custom hooks, use the hook directly
+      if (useCustomHooks) {
+        removeTriple(entityId, attributeId);
+      } else {
+        // Otherwise use the traditional approach
+        const deleteTripleOp = Triple.remove({
+          entityId,
+          attributeId,
+        });
+
+        if (addOperation) {
+          addOperation(deleteTripleOp);
+        }
+      }
+
+      setStatus(`Added Delete Triple operation`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setStatus(`Error removing triple: ${errorMessage}`);
+    }
   };
 
   return (
@@ -98,16 +175,23 @@ export const TripleOperationsCard = ({
           <div className="form-control">
             <label className="label">
               <span className="label-text">Entity ID</span>
-              <button className="btn btn-xs btn-outline btn-primary" onClick={handleGenerateEntityID}>
+              <button className="btn btn-xs btn-outline btn-primary" onClick={generateEntityHandler}>
                 Generate
               </button>
             </label>
-            <input type="text" placeholder="Entity ID" className="input input-bordered" value={entityId} readOnly />
+            <input
+              type="text"
+              placeholder="Entity ID"
+              className="input input-bordered"
+              value={entityId}
+              onChange={e => !propEntityId && setInternalEntityId(e.target.value)}
+              readOnly={!!propEntityId}
+            />
           </div>
           <div className="form-control">
             <label className="label">
               <span className="label-text">Attribute ID</span>
-              <button className="btn btn-xs btn-outline btn-primary" onClick={handleGenerateAttributeID}>
+              <button className="btn btn-xs btn-outline btn-primary" onClick={generateAttributeHandler}>
                 Generate
               </button>
             </label>
@@ -116,7 +200,8 @@ export const TripleOperationsCard = ({
               placeholder="Attribute ID"
               className="input input-bordered"
               value={attributeId}
-              readOnly
+              onChange={e => !propAttributeId && setInternalAttributeId(e.target.value)}
+              readOnly={!!propAttributeId}
             />
           </div>
 

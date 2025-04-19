@@ -4,3 +4,4 @@ export * from "./TripleOperationsCard";
 export * from "./RelationOperationsCard";
 export * from "./OperationsLog";
 export * from "./PublishCard";
+export * from "./HookDemoCard";
