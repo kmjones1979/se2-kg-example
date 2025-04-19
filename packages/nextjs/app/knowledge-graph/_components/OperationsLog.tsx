@@ -4,13 +4,15 @@ interface OperationsLogProps {
 }
 
 export const OperationsLog = ({ ops, clearOps }: OperationsLogProps) => {
+  console.log("OperationsLog rendering with ops:", ops);
+
   return (
     <div className="card bg-base-100 shadow-xl mb-8">
       <div className="card-body">
         <h2 className="card-title">
           Operations Log
-          <div className="badge badge-primary">{ops.length}</div>
-          {ops.length > 0 && (
+          <div className="badge badge-primary">{ops && ops.length > 0 ? ops.length : 0}</div>
+          {ops && ops.length > 0 && (
             <button className="btn btn-sm btn-error ml-auto" onClick={clearOps}>
               <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" viewBox="0 0 20 20" fill="currentColor">
                 <path
@@ -24,7 +26,7 @@ export const OperationsLog = ({ ops, clearOps }: OperationsLogProps) => {
           )}
         </h2>
         <div className="bg-base-300 p-4 rounded-lg overflow-auto max-h-60">
-          {ops.length > 0 ? (
+          {ops && ops.length > 0 ? (
             <pre className="text-sm">{JSON.stringify(ops, null, 2)}</pre>
           ) : (
             <div className="text-center text-base-content/60 py-8">

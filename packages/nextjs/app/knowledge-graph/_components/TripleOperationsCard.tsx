@@ -107,20 +107,32 @@ export const TripleOperationsCard = ({
     };
 
     try {
-      // If using custom hooks, use the hook directly
-      if (useCustomHooks) {
-        addTriple(entityId, attributeId, value);
-      } else {
-        // Otherwise use the traditional approach
-        const setTripleOp = Triple.make({
-          entityId,
-          attributeId,
-          value,
-        });
+      // Log for debugging
+      console.log("Adding triple operation:", {
+        entityId,
+        attributeId,
+        value,
+        useCustomHooks,
+      });
 
-        if (addOperation) {
-          addOperation(setTripleOp);
-        }
+      // Create the operation object
+      const setTripleOp = Triple.make({
+        entityId,
+        attributeId,
+        value,
+      });
+
+      // Direct approach - always call addOperation
+      if (addOperation) {
+        console.log("Using operation approach regardless of hooks");
+        addOperation(setTripleOp);
+      } else if (useCustomHooks && addTriple) {
+        // Fallback to hook if addOperation isn't available
+        console.log("Fallback to hook approach");
+        const result = addTriple(entityId, attributeId, value);
+        console.log("Result from hook's addTriple:", result);
+      } else {
+        console.error("No method available to add operation");
       }
 
       setStatus(`Added Triple operation with ${valueType} value`);
@@ -305,7 +317,7 @@ export const TripleOperationsCard = ({
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-4">
             <button className="btn btn-primary" onClick={addTripleOp}>
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
                 <path
@@ -322,6 +334,42 @@ export const TripleOperationsCard = ({
               </svg>
               Remove Triple
             </button>
+            {useCustomHooks && (
+              <button
+                className="btn btn-accent"
+                onClick={() => {
+                  // Direct API call for debugging
+                  if (!entityId || !attributeId) {
+                    setStatus("Entity ID and Attribute ID are required");
+                    return;
+                  }
+
+                  const currentValue = getCurrentValue();
+                  const value = {
+                    type: valueType === "RELATION" ? "TEXT" : (valueType as GraphValueType),
+                    value: currentValue,
+                  };
+
+                  // Create operation directly without using both paths
+                  const tripleOp = Triple.make({
+                    entityId,
+                    attributeId,
+                    value,
+                  });
+
+                  // Log it but don't call addOperation
+                  console.log("Direct API call:", tripleOp);
+
+                  // Now call addOperation with the created operation
+                  if (addOperation) {
+                    addOperation(tripleOp);
+                    setStatus("Direct API call: Triple operation sent to addOperation");
+                  }
+                }}
+              >
+                Direct API Call
+              </button>
+            )}
           </div>
         </div>
       </div>

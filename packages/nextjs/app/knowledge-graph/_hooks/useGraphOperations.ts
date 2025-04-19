@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Relation, Triple, ValueType } from "@graphprotocol/grc-20";
 
 type OperationType = "triple" | "relation";
@@ -20,6 +20,14 @@ interface Operation {
 export const useGraphOperations = () => {
   const [operations, setOperations] = useState<Operation[]>([]);
   const [lastStatus, setLastStatus] = useState<string>("");
+  const [operationsCount, setOperationsCount] = useState<number>(0);
+
+  // Update operations count when operations change
+  const updateOperations = useCallback((newOperations: Operation[]) => {
+    setOperations(newOperations);
+    setOperationsCount(newOperations.length);
+    console.log("Operations updated, new count:", newOperations.length);
+  }, []);
 
   /**
    * Create a triple operation for adding an entity-attribute-value
@@ -52,8 +60,10 @@ export const useGraphOperations = () => {
         id: `triple-${entityId}-${attributeId}-${Date.now()}`,
       };
 
-      setOperations(prev => [...prev, newOperation]);
+      const newOperations = [...operations, newOperation];
+      updateOperations(newOperations);
       setLastStatus(`Added Triple: ${entityId}.${attributeId} = ${value.value}`);
+      console.log("Triple added, new count:", newOperations.length);
       return tripleOp;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -85,7 +95,8 @@ export const useGraphOperations = () => {
         id: `triple-remove-${entityId}-${attributeId}-${Date.now()}`,
       };
 
-      setOperations(prev => [...prev, newOperation]);
+      const newOperations = [...operations, newOperation];
+      updateOperations(newOperations);
       setLastStatus(`Removed Triple: ${entityId}.${attributeId}`);
       return tripleOp;
     } catch (error) {
@@ -123,7 +134,8 @@ export const useGraphOperations = () => {
         id: `relation-${fromId}-${relationTypeId}-${toId}-${Date.now()}`,
       };
 
-      setOperations(prev => [...prev, newOperation]);
+      const newOperations = [...operations, newOperation];
+      updateOperations(newOperations);
       setLastStatus(`Added Relation: ${fromId} → ${toId}`);
       return relationOp;
     } catch (error) {
@@ -154,7 +166,8 @@ export const useGraphOperations = () => {
         id: `relation-remove-${relationId}-${Date.now()}`,
       };
 
-      setOperations(prev => [...prev, newOperation]);
+      const newOperations = [...operations, newOperation];
+      updateOperations(newOperations);
       setLastStatus(`Removed Relation: ${relationId}`);
       return relationOp;
     } catch (error) {
@@ -167,7 +180,7 @@ export const useGraphOperations = () => {
   return {
     // Operations
     operations,
-    operationsCount: operations.length,
+    operationsCount,
     lastStatus,
 
     // Core operation functions
@@ -178,11 +191,12 @@ export const useGraphOperations = () => {
 
     // Utility functions
     clearOperations: () => {
-      setOperations([]);
+      updateOperations([]);
       setLastStatus("Operations cleared");
     },
     removeOperation: (id: string) => {
-      setOperations(prev => prev.filter(op => op.id !== id));
+      const newOperations = operations.filter(op => op.id !== id);
+      updateOperations(newOperations);
       setLastStatus(`Operation ${id} removed`);
     },
 

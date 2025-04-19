@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import {
   ConnectedAddressCard,
   HookDemoCard,
@@ -17,10 +17,26 @@ import { useAccount, useWaitForTransactionReceipt } from "wagmi";
 // Note: The RELATION type is primarily for property definitions and not directly for Triple values
 type ValueType = "TEXT" | "NUMBER" | "URL" | "TIME" | "POINT" | "CHECKBOX";
 
+// Define a type for operations
+type Operation = {
+  __typename?: string;
+  op?: string;
+  entityId?: string;
+  attributeId?: string;
+  value?: any;
+  fromId?: string;
+  relationTypeId?: string;
+  toId?: string;
+  id?: string;
+};
+
 const KnowledgeGraph = () => {
   const { address: connectedAddress } = useAccount();
   const [activeTab, setActiveTab] = useState("triple");
   const [showHookDemo, setShowHookDemo] = useState(false);
+
+  // Local state to track operations count
+  const [localOpsCount, setLocalOpsCount] = useState(0);
 
   // State for expandable sections
   const [expandTripleSection, setExpandTripleSection] = useState(true);
@@ -73,12 +89,81 @@ const KnowledgeGraph = () => {
     hash: txHash as `0x${string}` | undefined,
   });
 
-  // Utility function to add operations to our operations store
-  const addOperation = (operation: any) => {
-    // The specific operation (triple/relation) is handled by the useGraphOperations hook internally
-    // This is a passthrough function to maintain compatibility with existing components
-    // The operation is already added to our operations store by the hooks
+  // Add forceUpdate function to trigger re-renders when needed
+  const [, forceUpdate] = useReducer(x => x + 1, 0);
+
+  // Direct tracking of operations
+  const [directOperations, setDirectOperations] = useState<any[]>([]);
+
+  // Use ref to maintain operations count independent of React rendering
+  const opsCountRef = useRef(0);
+
+  // Add useEffect to debug operations count with forced update
+  useEffect(() => {
+    console.log("Operations count updated:", operationsCount, "Operations array:", operations);
+    // Force a re-render after a short delay to ensure UI is updated
+    const timer = setTimeout(() => {
+      forceUpdate();
+      console.log("Forced update with operations count:", operationsCount);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [operationsCount, operations]);
+
+  // Add useEffect to update local operations count when operations change
+  useEffect(() => {
+    if (operations && operations.length !== undefined) {
+      setLocalOpsCount(operations.length);
+      console.log("Updated local operations count:", operations.length);
+    }
+  }, [operations]);
+
+  // Add a simple manual tracker for operations
+  const incrementOpsCount = (operation: any) => {
+    opsCountRef.current += 1;
+    setLocalOpsCount(opsCountRef.current);
+
+    // Also track the operation directly
+    setDirectOperations(prev => [...prev, operation]);
+
+    console.log("Manual increment - new count:", opsCountRef.current);
+    forceUpdate();
+  };
+
+  // Override the addOperation function with direct tracking
+  const addOperation = (operation: Operation) => {
+    console.log("addOperation called with:", operation);
+
+    // First, add the operation to our direct tracking
+    incrementOpsCount(operation);
+
+    // Direct access to operations array for triple operations
+    if (operation.__typename === "Triple" || operation.op === "SetTriple") {
+      if (operation.entityId && operation.attributeId && operation.value) {
+        const result = addTriple(operation.entityId, operation.attributeId, operation.value);
+        console.log("Direct addTriple result:", result);
+      }
+    }
+    // Direct access for relation operations
+    else if (operation.__typename === "Relation" || operation.op === "SetRelation") {
+      if (operation.fromId && operation.relationTypeId && operation.toId) {
+        const result = addRelation(operation.fromId, operation.relationTypeId, operation.toId, operation.id);
+        console.log("Direct addRelation result:", result);
+      }
+    }
+
+    // Set status and force a UI update
     setStatus(`Operation added: ${operation.op || operation.__typename || "Unknown"}`);
+  };
+
+  // Override the clearOperations function to clear our direct tracking too
+  const originalClearOperations = clearOperations;
+  const wrappedClearOperations = () => {
+    originalClearOperations();
+    setDirectOperations([]);
+    opsCountRef.current = 0;
+    setLocalOpsCount(0);
+    forceUpdate();
+    console.log("All operations cleared");
   };
 
   // Functions to handle ID generation
@@ -127,10 +212,8 @@ const KnowledgeGraph = () => {
   };
 
   return (
-    <div className="flex flex-col min-h-screen pb-12">
+    <div className="flex flex-col min-h-screen">
       <div className="px-4 lg:px-8 py-4">
-        <h1 className="text-3xl font-bold mb-6">Knowledge Graph Builder</h1>
-
         {/* Header */}
         <div className="bg-gradient-to-br from-primary to-secondary text-white p-4 shadow-xl">
           <div className="container mx-auto px-4 py-6">
@@ -245,7 +328,7 @@ const KnowledgeGraph = () => {
                 )}
               </div>
 
-              {/* Operations Log */}
+              {/* Operations Log with our direct operations tracking */}
               <div className="card bg-base-100 border border-base-300 shadow-sm mb-8">
                 <div
                   className="card-title p-4 cursor-pointer flex justify-between items-center"
@@ -268,7 +351,8 @@ const KnowledgeGraph = () => {
 
                 {expandOperationsLog && (
                   <div className="card-body pt-0">
-                    <OperationsLog ops={getRawOperations()} clearOps={clearOperations} />
+                    {/* Replace getRawOperations() with directOperations for more reliable tracking */}
+                    <OperationsLog ops={directOperations} clearOps={wrappedClearOperations} />
                   </div>
                 )}
               </div>
@@ -593,8 +677,33 @@ const KnowledgeGraph = () => {
         </div>
       </div>
 
-      {/* Fixed Status Footer */}
-      <StatusFooter status={displayStatus || "Ready"} operationsCount={operationsCount || 0} />
+      {/* Fixed Footer */}
+      <div className="fixed bottom-0 left-0 w-full bg-gradient-to-br from-primary to-secondary text-white py-2 px-4 shadow-lg z-50">
+        <div className="container mx-auto flex items-center justify-between">
+          <div className="flex items-center">
+            <span className="text-xs opacity-80">Status:</span>
+            <span className="ml-2 text-sm font-medium">{displayStatus || "Ready"}</span>
+          </div>
+          <div
+            className="badge badge-neutral text-xs font-medium"
+            onClick={() => {
+              console.log("Operations object:", operations);
+              console.log("Operations count:", operationsCount);
+              console.log("Operations length:", operations.length);
+              console.log("Direct operations:", directOperations);
+              console.log("Direct operations length:", directOperations.length);
+              console.log("Local operations count:", localOpsCount);
+              console.log("Ref operations count:", opsCountRef.current);
+              console.log("Raw operations:", getRawOperations());
+              console.log("Raw operations length:", getRawOperations().length);
+              // Force an update to make sure UI reflects current state
+              forceUpdate();
+            }}
+          >
+            {directOperations.length} ops
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
