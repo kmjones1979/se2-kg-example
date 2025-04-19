@@ -20,44 +20,37 @@ export const Footer = ({ status, opsCount }: { status?: string; opsCount?: numbe
   const pathname = usePathname();
   const isKnowledgeGraphPage = pathname === "/knowledge-graph";
 
+  // Don't render the footer on the knowledge graph page as it has its own dedicated footer
+  if (isKnowledgeGraphPage) {
+    return null;
+  }
+
   return (
     <div className="min-h-0 py-5 px-1 mb-11 lg:mb-0">
       <div>
         <div className="fixed flex justify-between items-center w-full z-10 p-4 bottom-0 left-0 pointer-events-none">
-          {isKnowledgeGraphPage ? (
-            <div className="w-full bg-gradient-to-br from-primary to-secondary text-white py-2 px-4 rounded-lg shadow-lg pointer-events-auto">
-              <div className="container mx-auto flex items-center justify-between">
-                <div className="flex items-center">
-                  <span className="text-xs opacity-80">Status:</span>
-                  <span className="ml-2 text-sm font-medium">{status || "Ready"}</span>
-                </div>
-                <div className="badge badge-neutral text-xs font-medium">{opsCount || 0} ops</div>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="flex flex-col md:flex-row gap-2 pointer-events-auto">
-                {nativeCurrencyPrice > 0 && (
-                  <div>
-                    <div className="btn btn-primary btn-sm font-normal gap-1 cursor-auto">
-                      <CurrencyDollarIcon className="h-4 w-4" />
-                      <span>{nativeCurrencyPrice.toFixed(2)}</span>
-                    </div>
+          <>
+            <div className="flex flex-col md:flex-row gap-2 pointer-events-auto">
+              {nativeCurrencyPrice > 0 && (
+                <div>
+                  <div className="btn btn-primary btn-sm font-normal gap-1 cursor-auto">
+                    <CurrencyDollarIcon className="h-4 w-4" />
+                    <span>{nativeCurrencyPrice.toFixed(2)}</span>
                   </div>
-                )}
-                {isLocalNetwork && (
-                  <>
-                    <Faucet />
-                    <Link href="/blockexplorer" passHref className="btn btn-primary btn-sm font-normal gap-1">
-                      <MagnifyingGlassIcon className="h-4 w-4" />
-                      <span>Block Explorer</span>
-                    </Link>
-                  </>
-                )}
-              </div>
-              <SwitchTheme className={`pointer-events-auto ${isLocalNetwork ? "self-end md:self-auto" : ""}`} />
-            </>
-          )}
+                </div>
+              )}
+              {isLocalNetwork && (
+                <>
+                  <Faucet />
+                  <Link href="/blockexplorer" passHref className="btn btn-primary btn-sm font-normal gap-1">
+                    <MagnifyingGlassIcon className="h-4 w-4" />
+                    <span>Block Explorer</span>
+                  </Link>
+                </>
+              )}
+            </div>
+            <SwitchTheme className={`pointer-events-auto ${isLocalNetwork ? "self-end md:self-auto" : ""}`} />
+          </>
         </div>
       </div>
       <div className="w-full">

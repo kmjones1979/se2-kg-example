@@ -2,6 +2,8 @@ export * from "./useGraphIds";
 export * from "./useGraphOperations";
 export * from "./useGraphPublishing";
 export * from "./useGraphEntities";
+export * from "./useExpandableSections";
+export * from "./useEntityIdState";
 
 /**
  * Knowledge Graph Hooks
@@ -16,6 +18,8 @@ export * from "./useGraphEntities";
  * - useGraphOperations: Create and manage triple and relation operations
  * - useGraphPublishing: Handle the IPFS and blockchain publishing flow
  * - useGraphEntities: Create and manage entities with their attributes
+ * - useExpandableSections: Manage expandable UI sections
+ * - useEntityIdState: Manage entity ID state with notifications
  *
  * Usage example:
  *
@@ -24,7 +28,9 @@ export * from "./useGraphEntities";
  *   useGraphIds,
  *   useGraphOperations,
  *   useGraphPublishing,
- *   useGraphEntities
+ *   useGraphEntities,
+ *   useExpandableSections,
+ *   useEntityIdState
  * } from './_hooks';
  *
  * const MyComponent = () => {
@@ -32,6 +38,8 @@ export * from "./useGraphEntities";
  *   const { addTriple } = useGraphOperations();
  *   const { publishToIPFS } = useGraphPublishing();
  *   const { createPersonEntity } = useGraphEntities();
+ *   const { toggleSection } = useExpandableSections();
+ *   const { entityId, handleGenerateEntityID } = useEntityIdState();
  *
  *   // Use the hooks...
  * };

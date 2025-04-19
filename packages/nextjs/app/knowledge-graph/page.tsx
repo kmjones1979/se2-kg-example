@@ -8,9 +8,10 @@ import {
   OperationsLog,
   PublishCard,
   RelationOperationsCard,
+  StatusFooter,
   TripleOperationsCard,
 } from "./_components";
-import { useGraphEntities, useGraphIds, useGraphOperations, useGraphPublishing } from "./_hooks";
+import { useGraphIds, useGraphOperations, useGraphPublishing } from "./_hooks";
 import { useAccount, useWaitForTransactionReceipt } from "wagmi";
 
 // Note: The RELATION type is primarily for property definitions and not directly for Triple values
@@ -593,15 +594,7 @@ const KnowledgeGraph = () => {
       </div>
 
       {/* Fixed Status Footer */}
-      <div className="fixed bottom-0 left-0 w-full bg-gradient-to-br from-primary to-secondary text-white py-2 px-4 shadow-lg z-50">
-        <div className="container mx-auto flex items-center justify-between">
-          <div className="flex items-center">
-            <span className="text-xs opacity-80">Status:</span>
-            <span className="ml-2 text-sm font-medium">{displayStatus || "Ready"}</span>
-          </div>
-          <div className="badge badge-neutral text-xs font-medium">{operationsCount || 0} ops</div>
-        </div>
-      </div>
+      <StatusFooter status={displayStatus || "Ready"} operationsCount={operationsCount || 0} />
     </div>
   );
 };
