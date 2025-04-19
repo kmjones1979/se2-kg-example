@@ -3,9 +3,17 @@ import { useGraphEntities, useGraphIds, useGraphOperations, useGraphPublishing }
 import { OperationsLog } from "./OperationsLog";
 
 /**
+ * Props for HookDemoCard component
+ */
+interface HookDemoCardProps {
+  onStatusChange?: (status: string) => void;
+  onOperationsCountChange?: (count: number) => void;
+}
+
+/**
  * A component that demonstrates using our custom hooks together
  */
-export const HookDemoCard = () => {
+export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDemoCardProps) => {
   const [name, setName] = useState("");
   const [age, setAge] = useState<number | "">("");
   const [bio, setBio] = useState("");
@@ -63,8 +71,18 @@ export const HookDemoCard = () => {
     return `triple-${Math.random().toString(36).substring(2, 10)}`;
   };
 
-  const { operationName, setOperationName, publishToIPFS, publishToChain, ipfsCid, txHash, spaceId, setSpaceId } =
-    useGraphPublishing();
+  const {
+    operationName,
+    setOperationName,
+    publishToIPFS,
+    publishToChain,
+    ipfsCid,
+    txHash,
+    spaceId,
+    setSpaceId,
+    getCallData,
+    sendTransaction,
+  } = useGraphPublishing();
 
   // Add a ref to store operations between steps
   const operationsRef = useRef<any[]>([]);
@@ -975,6 +993,22 @@ export const HookDemoCard = () => {
     return () => clearInterval(checkInterval);
   }, [operations.length, operationsRef.current.length, useBackupOperations]);
 
+  // Update parent component with operations count and status
+  useEffect(() => {
+    // Use either the main operations count or the backup ref count
+    const currentCount = useBackupOperations ? operationsRef.current.length : operationsCount;
+    if (onOperationsCountChange) {
+      onOperationsCountChange(currentCount);
+    }
+  }, [operations, operationsCount, operationsRef.current.length, useBackupOperations, onOperationsCountChange]);
+
+  // Update parent with status when it changes
+  useEffect(() => {
+    if (onStatusChange && lastStatus) {
+      onStatusChange(lastStatus);
+    }
+  }, [lastStatus, onStatusChange]);
+
   return (
     <div className="card bg-base-100 shadow-xl mb-8">
       <div className="card-body">
@@ -1514,6 +1548,45 @@ export const HookDemoCard = () => {
                 </div>
               )}
 
+              {ipfsCid && !txHash && (
+                <button
+                  className="btn btn-primary mt-4 w-full"
+                  onClick={async () => {
+                    setStatus("Getting transaction data and sending to blockchain...");
+                    try {
+                      // First get the transaction data
+                      const callData = await getCallData();
+                      if (!callData) {
+                        setStatus("Failed to get transaction data");
+                        return;
+                      }
+
+                      // Then send the transaction
+                      const hash = await sendTransaction();
+                      if (hash) {
+                        setStatus(`Transaction sent! Hash: ${hash}`);
+                      } else {
+                        setStatus("Failed to send transaction");
+                      }
+                    } catch (error) {
+                      const message = error instanceof Error ? error.message : String(error);
+                      setStatus(`Error sending transaction: ${message}`);
+                    }
+                  }}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5 mr-2"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Send Transaction to Blockchain
+                </button>
+              )}
+
               {txHash && (
                 <div className="alert alert-success mt-2">
                   <svg
@@ -1564,11 +1637,13 @@ export const HookDemoCard = () => {
             <div className="card-body pt-0">
               <div className="text-sm opacity-70">{lastStatus || "Ready"}</div>
 
-              {operationsCount > 0 && (
+              {(operationsCount > 0 || (useBackupOperations && operationsRef.current.length > 0)) && (
                 <div className="mt-2">
-                  <h4 className="font-semibold text-sm">Pending Operations: {operationsCount}</h4>
+                  <h4 className="font-semibold text-sm">
+                    Pending Operations: {useBackupOperations ? operationsRef.current.length : operationsCount}
+                  </h4>
                   <div className="mt-1 p-2 bg-base-200 rounded-lg text-xs max-h-24 overflow-y-auto">
-                    {operations.map((op, index) => (
+                    {(useBackupOperations ? operationsRef.current : operations).map((op, index) => (
                       <div key={index} className="mb-1">
                         <span className="font-bold">{op.type}</span>: {op.action} -{" "}
                         {op.timestamp ? new Date(op.timestamp).toLocaleTimeString() : ""}

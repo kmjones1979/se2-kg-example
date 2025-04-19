@@ -38,6 +38,10 @@ const KnowledgeGraph = () => {
   // Local state to track operations count
   const [localOpsCount, setLocalOpsCount] = useState(0);
 
+  // State for hook demo status and operations count
+  const [hookDemoStatus, setHookDemoStatus] = useState("");
+  const [hookDemoOpsCount, setHookDemoOpsCount] = useState(0);
+
   // State for expandable sections
   const [expandTripleSection, setExpandTripleSection] = useState(true);
   const [expandOperationsLog, setExpandOperationsLog] = useState(true);
@@ -236,7 +240,7 @@ const KnowledgeGraph = () => {
         <div className="container mx-auto p-4 pb-20">
           {showHookDemo ? (
             /* New Hook-based Interface */
-            <HookDemoCard />
+            <HookDemoCard onStatusChange={setHookDemoStatus} onOperationsCountChange={setHookDemoOpsCount} />
           ) : (
             /* Traditional Interface */
             <>
@@ -682,7 +686,9 @@ const KnowledgeGraph = () => {
         <div className="container mx-auto flex items-center justify-between">
           <div className="flex items-center">
             <span className="text-xs opacity-80">Status:</span>
-            <span className="ml-2 text-sm font-medium">{displayStatus || "Ready"}</span>
+            <span className="ml-2 text-sm font-medium">
+              {showHookDemo ? hookDemoStatus || "Ready" : displayStatus || "Ready"}
+            </span>
           </div>
           <div
             className="badge badge-neutral text-xs font-medium"
@@ -696,11 +702,12 @@ const KnowledgeGraph = () => {
               console.log("Ref operations count:", opsCountRef.current);
               console.log("Raw operations:", getRawOperations());
               console.log("Raw operations length:", getRawOperations().length);
+              console.log("Hook demo operations count:", hookDemoOpsCount);
               // Force an update to make sure UI reflects current state
               forceUpdate();
             }}
           >
-            {directOperations.length} ops
+            {showHookDemo ? hookDemoOpsCount : directOperations.length} ops
           </div>
         </div>
       </div>
