@@ -1,39 +1,25 @@
 import { ReactNode, useState } from "react";
 
 interface ExpandableCardProps {
-  title: string | ReactNode;
-  icon?: ReactNode;
+  title: ReactNode;
+  children: ReactNode;
   defaultExpanded?: boolean;
   className?: string;
-  headerClassName?: string;
-  bodyClassName?: string;
-  children: ReactNode;
 }
 
 /**
- * A reusable expandable card component with consistent styling and behavior
+ * Reusable expandable card component with toggle functionality
  */
-export const ExpandableCard = ({
-  title,
-  icon,
-  defaultExpanded = true,
-  className = "",
-  headerClassName = "",
-  bodyClassName = "",
-  children,
-}: ExpandableCardProps) => {
+export const ExpandableCard = ({ title, children, defaultExpanded = false, className = "" }: ExpandableCardProps) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   return (
-    <div className={`card bg-base-100 border border-base-300 shadow-sm mb-8 ${className}`}>
+    <div className={`card bg-base-100 border border-base-300 shadow-sm mb-4 ${className}`}>
       <div
-        className={`card-title p-4 cursor-pointer flex justify-between items-center ${headerClassName}`}
+        className="card-title p-4 cursor-pointer flex justify-between items-center"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className="flex items-center">
-          {icon && <div className="mr-2">{icon}</div>}
-          {typeof title === "string" ? <h3 className="text-lg font-bold">{title}</h3> : title}
-        </div>
+        {typeof title === "string" ? <h3 className="text-lg font-bold">{title}</h3> : title}
         <svg
           xmlns="http://www.w3.org/2000/svg"
           className={`h-5 w-5 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}
@@ -48,7 +34,7 @@ export const ExpandableCard = ({
         </svg>
       </div>
 
-      {isExpanded && <div className={`card-body pt-0 ${bodyClassName}`}>{children}</div>}
+      {isExpanded && <div className="card-body pt-0">{children}</div>}
     </div>
   );
 };
