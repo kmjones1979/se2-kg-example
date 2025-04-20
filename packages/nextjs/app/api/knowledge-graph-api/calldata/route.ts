@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import hypergraphConfig, { NetworkType, getCalldataApiUrl, getDefaultSpaceId } from "~~/hypergraph.config";
 
 /**
  * API route that proxies requests to The Graph API to avoid CORS issues
@@ -7,7 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { spaceId, cid, network = "MAINNET" } = body;
+    const { spaceId = getDefaultSpaceId(), cid, network = hypergraphConfig.defaultNetwork } = body;
 
     console.log("API route received request:", { spaceId, cid, network });
 
@@ -15,15 +16,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required parameters: spaceId and cid are required" }, { status: 400 });
     }
 
-    // Try a different endpoint structure - option #3 from our test list
-    // Using api.grc-20.thegraph.com pattern
-    const baseUrl =
-      network === "TESTNET" ? "https://api-testnet.grc-20.thegraph.com" : "https://api.grc-20.thegraph.com"; // Updated domain structure
+    // Ensure the CID has the ipfs:// prefix as required by the API
+    const formattedCid = cid.startsWith("ipfs://") ? cid : `ipfs://${cid}`;
 
-    const apiUrl = `${baseUrl}/space/${spaceId}/edit/calldata`;
+    // Get the API URL from config
+    const apiUrl = getCalldataApiUrl(spaceId, network as NetworkType);
 
     console.log(`Proxying request to: ${apiUrl}`);
-    console.log("Request body:", JSON.stringify({ cid, network }));
+    console.log("Request body:", JSON.stringify({ cid: formattedCid, network }));
 
     // Forward the request to The Graph API following the exact structure from documentation
     try {
@@ -31,9 +31,10 @@ export async function POST(req: NextRequest) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/json",
         },
         body: JSON.stringify({
-          cid, // This should be prefixed with ipfs:// according to docs
+          cid: formattedCid, // Make sure we're using the properly formatted CID with ipfs:// prefix
           network, // TESTNET or MAINNET
         }),
       });
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
 
       // Try to get the response text first to avoid JSON parsing errors
       const responseText = await response.text();
-      console.log("External API response text:", responseText);
+      console.log("External API response text (first 200 chars):", responseText.substring(0, 200));
 
       // Try to parse as JSON if possible
       let responseData;
@@ -63,6 +64,11 @@ export async function POST(req: NextRequest) {
           url: apiUrl,
         });
 
+        // If this is a 404, it might be a different API path structure - log this possibility
+        if (response.status === 404) {
+          console.warn("API endpoint not found. Check if the path structure is correct for this API provider.");
+        }
+
         return NextResponse.json(
           {
             error: "Error from The Graph API",
@@ -76,7 +82,20 @@ export async function POST(req: NextRequest) {
 
       // Return the successful response containing to and data fields
       // Expected response format: { to: "0x...", data: "0x..." }
-      return NextResponse.json(responseData);
+      if (responseData && responseData.to && responseData.data) {
+        console.log("Successfully received calldata from API");
+        return NextResponse.json(responseData);
+      } else {
+        console.error("API response doesn't contain expected fields:", responseData);
+        return NextResponse.json(
+          {
+            error: "Invalid API response format",
+            details: "Response doesn't contain expected 'to' and 'data' fields",
+            receivedData: responseData,
+          },
+          { status: 502 },
+        );
+      }
     } catch (fetchError) {
       console.error("Fetch error:", fetchError);
       return NextResponse.json(

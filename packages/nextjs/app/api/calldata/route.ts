@@ -13,7 +13,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Determine API endpoint
-    const baseUrl = network === "TESTNET" ? "https://api-testnet.grc-20.thegraph.com" : "https://api.thegraph.com";
+    const baseUrl =
+      network === "TESTNET" ? "https://api-testnet.grc-20.thegraph.com" : "https://hypergraph.up.railway.app";
 
     const url = `${baseUrl}/space/${spaceId}/edit/calldata`;
     console.log("Proxying to:", url);

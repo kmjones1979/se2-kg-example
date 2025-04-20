@@ -1,6 +1,14 @@
 import { useState } from "react";
 import { Graph, Ipfs, getSmartAccountWalletClient } from "@graphprotocol/grc-20";
 import { useTransactor } from "~~/hooks/scaffold-eth";
+import hypergraphConfig, {
+  NetworkType,
+  getApiEndpoint,
+  getCalldataApiUrl,
+  getDefaultSpaceId,
+  getMockTxData,
+  shouldUseMockData,
+} from "~~/hypergraph.config";
 
 interface PublishingState {
   spaceId: string;
@@ -20,16 +28,13 @@ interface GraphPublishingStep {
   status: string;
 }
 
-// Supported network types in GRC-20
-type NetworkType = "TESTNET" | "MAINNET";
-
 /**
  * Hook for managing the publishing workflow: IPFS → Transaction Data → Blockchain
  *
  * @param initialSpaceId - The initial space ID to use for publishing
  * @returns Functions and state for publishing operations
  */
-export const useGraphPublishing = (initialSpaceId = "LB1JjNpxXBjP7caanTx3bP") => {
+export const useGraphPublishing = (initialSpaceId = getDefaultSpaceId()) => {
   const [state, setState] = useState<PublishingState>({
     spaceId: initialSpaceId,
     operationName: "",
@@ -170,7 +175,9 @@ export const useGraphPublishing = (initialSpaceId = "LB1JjNpxXBjP7caanTx3bP") =>
   /**
    * Get transaction data for the IPFS CID
    */
-  const getCallData = async (network: NetworkType = "MAINNET"): Promise<{ to: string; data: string } | null> => {
+  const getCallData = async (
+    network: NetworkType = hypergraphConfig.defaultNetwork,
+  ): Promise<{ to: string; data: string } | null> => {
     if (!state.spaceId) {
       setStatus("Space ID is required");
       return null;
@@ -194,15 +201,27 @@ export const useGraphPublishing = (initialSpaceId = "LB1JjNpxXBjP7caanTx3bP") =>
         // Note: According to the documentation, we need to make a direct fetch request
         console.log("Making direct call to the external API based on documentation");
 
-        // The documentation shows we should make a direct fetch, not use Graph.getCallData
-        const apiEndpoint = `https://api-${network.toLowerCase() === "testnet" ? "testnet" : "mainnet"}.grc-20.thegraph.com/space/${state.spaceId}/edit/calldata`;
+        // Get the API URL from config
+        const apiEndpoint = getCalldataApiUrl(state.spaceId, network);
 
         console.log(`Calling direct API: ${apiEndpoint}`);
+        console.log(
+          `Request body:`,
+          JSON.stringify(
+            {
+              cid: formattedCid,
+              network,
+            },
+            null,
+            2,
+          ),
+        );
 
         const directResponse = await fetch(apiEndpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            Accept: "application/json",
           },
           body: JSON.stringify({
             cid: formattedCid,
@@ -245,6 +264,7 @@ export const useGraphPublishing = (initialSpaceId = "LB1JjNpxXBjP7caanTx3bP") =>
             method: "POST",
             headers: {
               "Content-Type": "application/json",
+              Accept: "application/json",
             },
             body: JSON.stringify({
               spaceId: state.spaceId,
@@ -293,27 +313,26 @@ export const useGraphPublishing = (initialSpaceId = "LB1JjNpxXBjP7caanTx3bP") =>
     } catch (error) {
       console.error("All approaches failed, falling back to mock data:", error);
 
-      // FALLBACK: Use mock data to allow the application to function
-      console.warn("USING MOCK DATA AS FALLBACK - For development only");
+      // Check if we should use mock data from config
+      if (shouldUseMockData()) {
+        console.warn("USING MOCK DATA AS FALLBACK - For development only");
+        const mockData = getMockTxData();
 
-      const mockData = {
-        to: "0x731a10897d267e19b34503ad902d0a29173ba4b1",
-        data: "0x4554480000000000000000000000000000000000000000000000000000000000",
-      };
+        console.log(`Mock data being used: ${JSON.stringify(mockData, null, 2)}`);
+        console.log("NOTE: This is mock data for development purposes only.");
 
-      console.log(`Mock data being used: ${JSON.stringify(mockData, null, 2)}`);
-      console.log("NOTE: This is mock data for development purposes only.");
-      console.log("To use real API data, please check the API endpoint test page at:");
-      console.log("http://localhost:3000/api/new-log");
+        setState(prev => ({
+          ...prev,
+          txData: mockData,
+          status: "Call data ready (MOCK DATA - API fallback)",
+          step: 3,
+        }));
 
-      setState(prev => ({
-        ...prev,
-        txData: mockData,
-        status: "Call data ready (MOCK DATA - API fallback)",
-        step: 3,
-      }));
-
-      return mockData;
+        return mockData;
+      } else {
+        setStatus(`Error getting call data: ${error instanceof Error ? error.message : String(error)}`);
+        return null;
+      }
     }
   };
 

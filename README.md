@@ -193,6 +193,9 @@ async function publishOperations(ops, name, authorAddress) {
     const cid = ipfsResult.cid;
 
     // 2. Get transaction data for on-chain commitment
+
+    // Mainet endpoint https://hypergraph.up.railway.app
+
     const response = await fetch(
         `https://api-testnet.grc-20.thegraph.com/space/${spaceId}/edit/calldata`,
         {
@@ -1277,4 +1280,140 @@ const sendTransaction = async (): Promise<`0x${string}` | null> => {
         return null;
     }
 };
+```
+
+## Using the Hypergraph Railway API
+
+This application can use the `hypergraph.up.railway.app` API endpoint for MAINNET operations. The application is configured to automatically use this endpoint when performing operations on the MAINNET network.
+
+### API Endpoint Configuration
+
+The application uses the following API endpoints:
+
+-   **TESTNET**: `https://api-testnet.grc-20.thegraph.com`
+-   **MAINNET**: `https://hypergraph.up.railway.app`
+
+When making API calls, the endpoint is constructed as follows:
+
+```typescript
+const baseUrl =
+    network === "TESTNET"
+        ? "https://api-testnet.grc-20.thegraph.com"
+        : "https://hypergraph.up.railway.app";
+
+const apiEndpoint = `${baseUrl}/space/${spaceId}/edit/calldata`;
+```
+
+### Manual API Testing
+
+You can manually test the API using curl:
+
+```bash
+# For MAINNET (using hypergraph.up.railway.app)
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"cid":"ipfs://YOUR_CID_HERE","network":"MAINNET"}' \
+  https://hypergraph.up.railway.app/space/YOUR_SPACE_ID/edit/calldata
+
+# For TESTNET
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"cid":"ipfs://YOUR_CID_HERE","network":"TESTNET"}' \
+  https://api-testnet.grc-20.thegraph.com/space/YOUR_SPACE_ID/edit/calldata
+```
+
+### Error Handling
+
+The application includes comprehensive error handling for API communications, providing detailed information about any issues encountered when communicating with the hypergraph API endpoint. Common errors include:
+
+-   **404 Not Found**: This might indicate an incorrect path structure in the API URL.
+-   **Invalid Response Format**: If the API response doesn't contain the expected `to` and `data` fields.
+-   **Connection Issues**: If the API endpoint cannot be reached.
+
+## Configuration System
+
+The application uses a centralized configuration system through `hypergraph.config.ts` located in the NextJS package root. This provides a single source of truth for all hypergraph-related settings.
+
+### Configuration File Structure
+
+The configuration file includes:
+
+```typescript
+// hypergraph.config.ts
+const hypergraphConfig = {
+    // Default network to use (TESTNET or MAINNET)
+    defaultNetwork: "MAINNET",
+
+    // Default space ID to use
+    defaultSpaceId: "LB1JjNpxXBjP7caanTx3bP",
+
+    // API endpoints by network
+    endpoints: {
+        TESTNET: {
+            url: "https://api-testnet.grc-20.thegraph.com",
+            description: "The Graph Protocol Testnet API",
+        },
+        MAINNET: {
+            url: "https://hypergraph.up.railway.app",
+            description: "Hypergraph Railway Mainnet API",
+        },
+    },
+
+    // Whether to use mock data in development
+    useMockData:
+        process.env.NODE_ENV === "development" &&
+        process.env.USE_MOCK_DATA === "true",
+
+    // Mock data for fallback
+    mockData: {
+        txData: {
+            to: "0x731a10897d267e19b34503ad902d0a29173ba4b1",
+            data: "0x4554480000000000000000000000000000000000000000000000000000000000",
+        },
+    },
+};
+```
+
+### Using the Configuration
+
+The configuration provides helper functions to access settings:
+
+```typescript
+// Import in any file
+import hypergraphConfig, {
+    getApiEndpoint,
+    getCalldataApiUrl,
+    getDefaultSpaceId,
+    getDefaultNetwork,
+    shouldUseMockData,
+} from "~~/hypergraph.config";
+
+// Get the API endpoint for a network
+const apiUrl = getApiEndpoint("MAINNET");
+// => "https://hypergraph.up.railway.app"
+
+// Get the full calldata API URL for a space and network
+const calldataUrl = getCalldataApiUrl("YOUR_SPACE_ID", "MAINNET");
+// => "https://hypergraph.up.railway.app/space/YOUR_SPACE_ID/edit/calldata"
+```
+
+### Customizing Configuration
+
+To change the default space ID or endpoints, simply update the configuration file:
+
+1. Edit `packages/nextjs/hypergraph.config.ts`
+2. Update the desired settings
+3. The changes will automatically apply throughout the application
+
+### Environment Variables
+
+You can control certain behaviors with environment variables:
+
+-   `USE_MOCK_DATA=true` - Force the use of mock data in development mode
+
+Example using `.env.local`:
+
+```
+# Enable mock data for local development
+USE_MOCK_DATA=true
 ```
