@@ -17,14 +17,30 @@ This application allows you to create, manage and publish knowledge graph data t
     -   [useGraphOperations](#usegraphoperations)
     -   [useGraphPublishing](#usegraphpublishing)
     -   [useGraphIds](#usegraphids)
+    -   [useGraphRelations](#usegraphrelations)
     -   [useEntityState](#useentitystate)
     -   [useOperationsLog](#useoperationslog)
-    -   [useGraphRelations](#usegraphrelations)
+    -   [useOperationsTracking](#useoperationstracking)
+    -   [useExpandableSections](#useexpandablesections)
+    -   [useEntityIdManagement](#useentityidmanagement)
+    -   [useOperationsPublishing](#useoperationspublishing)
+    -   [useGraphApi](#usegraphapi)
+    -   [useEntityIdState](#useentityidstate)
 -   [UI Components](#ui-components)
     -   [OperationsLog](#operationslog)
     -   [HookDemoCard](#hookdemocard)
     -   [TripleOperationsCard](#tripleoperationscard)
     -   [RelationOperationsCard](#relationoperationscard)
+    -   [ConnectedAddressCard](#connectedaddresscard)
+    -   [OperationDetailsCard](#operationdetailscard)
+    -   [PublishCard](#publishcard)
+    -   [ExpandableCard](#expandablecard)
+    -   [PageHeader](#pageheader)
+    -   [StatusFooter](#statusfooter)
+    -   [KnowledgeGraphHelp](#knowledgegraphhelp)
+    -   [IdHelpCard](#idhelpcard)
+    -   [OperationsTabCard](#operationstabcard)
+    -   [TraditionalInterface](#traditionalinterface)
 -   [Hooks Tutorial: Building an "Alice Likes Pizza" Application](#hooks-tutorial-building-an-alice-likes-pizza-application)
 -   [Knowledge Graph Concepts](#knowledge-graph-concepts)
     -   [Core Concepts](#core-concepts)
@@ -50,8 +66,8 @@ This application allows you to create, manage and publish knowledge graph data t
 1. Clone the repository:
 
 ```bash
-git clone <repository-url>
-cd <repository-name>
+git clone https://github.com/kmjones1979/se2-kg-example.git
+cd se2-kg-example
 ```
 
 2. Install dependencies:
@@ -78,6 +94,7 @@ This hook manages knowledge graph operations such as adding/removing triples and
 
 ```typescript
 import { useGraphOperations } from "~/app/knowledge-graph/_hooks/useGraphOperations";
+import { useGraphIds } from "~/app/knowledge-graph/_hooks/useGraphIds";
 
 // Inside your component
 const {
@@ -92,18 +109,31 @@ const {
     setStatus, // Function to set status message
 } = useGraphOperations();
 
-// Example: Add a triple operation
+// Get ID generators
+const { generateEntityId, generateAttributeId, generateRelationTypeId } =
+    useGraphIds();
+
+// First, generate the necessary IDs
+const entityId = generateEntityId(); // "6vYQR7QmwkCMBbTwqFegDD"
+const attributeId = generateAttributeId(); // "PYR6HdNcwTJeeb3Ff2aFJa"
+
+// Then use those IDs to create a triple
 const tripleResult = addTriple(
-    "6vYQR7QmwkCMBbTwqFegDD", // Entity ID
-    "PYR6HdNcwTJeeb3Ff2aFJa", // Attribute ID
+    entityId, // Entity ID generated above
+    attributeId, // Attribute ID generated above
     { type: "TEXT", value: "Alice" } // Value with type
 );
 
-// Example: Add a relation
+// For relations, we need IDs for both entities and the relation type
+const personEntityId = generateEntityId();
+const foodEntityId = generateEntityId();
+const likesRelationTypeId = generateRelationTypeId();
+
+// Create a relation between entities
 const relationResult = addRelation(
-    "6vYQR7QmwkCMBbTwqFegDD", // From Entity ID
-    "8FdfX7N1sPRipLmFcBe3bn", // Relation Type ID
-    "PhuQucw8Z2FeUZY3rhiGxm" // To Entity ID
+    personEntityId, // From Entity ID
+    likesRelationTypeId, // Relation Type ID
+    foodEntityId // To Entity ID
 );
 ```
 
@@ -167,12 +197,15 @@ const attributeId = generateAttributeId();
 const relationTypeId = generateRelationTypeId();
 ```
 
+> **Note on ID Generation**: All IDs used in the knowledge graph (entity IDs, attribute IDs, relation type IDs) should be generated using the `useGraphIds` hook. This hook wraps the SDK's `Id.generate()` function and provides tracking capabilities. Always use the appropriate generator function for the type of ID you need, as shown in the examples throughout this documentation.
+
 ### useGraphRelations
 
 This hook manages relationships between entities in the knowledge graph.
 
 ```typescript
 import { useGraphRelations } from "~/app/knowledge-graph/_hooks/useGraphRelations";
+import { useGraphIds } from "~/app/knowledge-graph/_hooks/useGraphIds";
 
 // Inside your component
 const {
@@ -187,17 +220,22 @@ const {
     clearRelations, // Clear all relations
 } = useGraphRelations();
 
-// Example: Create a relation
+// Generate entity IDs first
+const { generateEntityId } = useGraphIds();
+const personId = generateEntityId();
+const pizzaId = generateEntityId();
+
+// Create a relation between entities
 const result = createRelation(
-    "6vYQR7QmwkCMBbTwqFegDD", // From Entity ID
+    personId, // From Entity ID
     "likes", // Relation type name
-    "PhuQucw8Z2FeUZY3rhiGxm" // To Entity ID
+    pizzaId // To Entity ID
 );
 
-// Example: Create a predefined relation
+// Or use the specialized helper function
 const likesResult = createLikesRelation(
-    "6vYQR7QmwkCMBbTwqFegDD", // Person ID
-    "PhuQucw8Z2FeUZY3rhiGxm" // Thing ID that is liked
+    personId, // Person ID
+    pizzaId // Thing ID that is liked
 );
 ```
 
@@ -279,6 +317,175 @@ const { ensureTracked } = trackOperation({
 ensureTracked();
 ```
 
+### useOperationsTracking
+
+This hook tracks operations with backup mechanisms to ensure operations are properly recorded even in async contexts.
+
+```typescript
+import { useOperationsTracking } from "~/app/knowledge-graph/_hooks/useOperationsTracking";
+
+// Inside your component
+const {
+    operations, // Array of operations
+    operationsCount, // Count of operations
+    operationsRef, // Ref to operations (useful for async contexts)
+    addOperation, // Add a new operation
+    trackOperation, // Track operation with safety mechanisms
+    clearOperations, // Clear all operations
+    isUsingBackup, // Whether the hook is using backup operations storage
+    setUseBackupOperations, // Manually switch to backup operations
+} = useOperationsTracking();
+
+// Example: Track an operation with safety mechanisms
+const { ensureTracked } = trackOperation({
+    type: "TRIPLE",
+    triple: {
+        entity: "entity123",
+        attribute: "attr456",
+        value: { type: "TEXT", value: "Example" },
+    },
+});
+
+// Later, verify the operation was tracked successfully
+ensureTracked();
+```
+
+### useExpandableSections
+
+This hook manages expandable UI sections with state tracking.
+
+```typescript
+import { useExpandableSections } from "~/app/knowledge-graph/_hooks/useExpandableSections";
+
+// Inside your component
+const {
+    expandedSections, // Current expanded state of sections
+    toggleSection, // Toggle a section's expanded state
+    expandSection, // Expand a specific section
+    collapseSection, // Collapse a specific section
+    expandAll, // Expand all sections
+    collapseAll, // Collapse all sections
+    resetToDefault, // Reset to initial state
+} = useExpandableSections({
+    tripleOperations: true, // Initially expanded
+    relationOperations: false, // Initially collapsed
+});
+
+// Example: Toggle a section
+<button onClick={() => toggleSection("tripleOperations")}>
+    Toggle Triple Operations
+</button>;
+```
+
+### useEntityIdManagement
+
+This hook provides utilities for managing entity IDs with status updates.
+
+```typescript
+import { useEntityIdManagement } from "~/app/knowledge-graph/_hooks/useEntityIdManagement";
+
+// Inside your component
+const {
+    entityId, // Current entity ID
+    attributeId, // Current attribute ID
+    relationTypeId, // Current relation type ID
+    relationId, // Current relation ID
+    handleGenerateEntityID, // Generate a new entity ID
+    handleGenerateAttributeID, // Generate a new attribute ID
+    handleGenerateRelationTypeID, // Generate a new relation type ID
+    handleGenerateRelationID, // Generate a new relation ID
+    handleGenerateID, // Generate a generic ID
+} = useEntityIdManagement((status) => console.log(status));
+
+// Example: Generate an entity ID with status update
+<button onClick={handleGenerateEntityID}>Generate Entity ID</button>;
+```
+
+### useOperationsPublishing
+
+This hook simplifies the publishing workflow for operations.
+
+```typescript
+import { useOperationsPublishing } from "~/app/knowledge-graph/_hooks/useOperationsPublishing";
+
+// Inside your component
+const {
+    publishOperations, // Function to publish operations to IPFS and blockchain
+    isPublishing, // Whether a publish operation is in progress
+    publishingStatus, // Current status of the publishing operation
+    publishingError, // Error that occurred during publishing, if any
+    transactionHash, // Transaction hash after successful publishing
+} = useOperationsPublishing();
+
+// Example: Publish operations
+async function handlePublish(operations) {
+    try {
+        const txHash = await publishOperations(operations, "My Operations");
+        console.log("Published with transaction hash:", txHash);
+    } catch (error) {
+        console.error("Error publishing:", error);
+    }
+}
+```
+
+### useGraphApi
+
+This hook provides direct access to the Graph API endpoints.
+
+```typescript
+import { useGraphApi } from "~/app/knowledge-graph/_hooks/useGraphApi";
+
+// Inside your component
+const {
+    spaceId, // Current space ID
+    setSpaceId, // Update the space ID
+    getEditCalldata, // Get calldata for an IPFS edit
+    useMockData, // Whether mock data is being used
+    setUseMockData, // Toggle mock data usage
+} = useGraphApi("YOUR_SPACE_ID");
+
+// Example: Get calldata for a transaction
+async function getTransactionData(ipfsCid) {
+    try {
+        const calldata = await getEditCalldata(ipfsCid, "TESTNET");
+        console.log("Transaction data:", calldata);
+        return calldata;
+    } catch (error) {
+        console.error("Error getting calldata:", error);
+    }
+}
+```
+
+### useEntityIdState
+
+This hook manages entity ID state with notifications and validation.
+
+```typescript
+import { useEntityIdState } from "~/app/knowledge-graph/_hooks/useEntityIdState";
+
+// Inside your component
+const {
+    entityId, // Current entity ID
+    setEntityId, // Update entity ID with validation
+    attributeId, // Current attribute ID
+    setAttributeId, // Update attribute ID with validation
+    relationTypeId, // Current relation type ID
+    setRelationTypeId, // Update relation type ID with validation
+    relationId, // Current relation ID
+    setRelationId, // Update relation ID with validation
+    handleGenerateEntityID, // Generate entity ID with notification
+    handleGenerateAttributeID, // Generate attribute ID with notification
+    handleGenerateRelationTypeID, // Generate relation type ID with notification
+    handleGenerateRelationID, // Generate relation ID with notification
+} = useEntityIdState({
+    onStatusUpdate: (message) => console.log(message),
+    validateIds: true,
+});
+
+// Example: Generate a new entity ID with notification
+<button onClick={handleGenerateEntityID}>Generate Entity ID</button>;
+```
+
 ## UI Components
 
 ### OperationsLog
@@ -329,6 +536,154 @@ import { RelationOperationsCard } from "~/app/knowledge-graph/_components/Relati
 
 // Inside your component render
 <RelationOperationsCard />;
+```
+
+### ConnectedAddressCard
+
+A card component that displays the currently connected wallet address.
+
+```tsx
+import { ConnectedAddressCard } from "~/app/knowledge-graph/_components/ConnectedAddressCard";
+
+// Inside your component render
+<ConnectedAddressCard />;
+```
+
+### OperationDetailsCard
+
+Displays detailed information about knowledge graph operations.
+
+```tsx
+import { OperationDetailsCard } from "~/app/knowledge-graph/_components/OperationDetailsCard";
+
+// Inside your component render
+<OperationDetailsCard
+    operations={operations}
+    title="Operation Details"
+    expanded={true}
+/>;
+```
+
+### PublishCard
+
+Provides UI for publishing operations to IPFS and blockchain.
+
+```tsx
+import { PublishCard } from "~/app/knowledge-graph/_components/PublishCard";
+
+// Inside your component render
+<PublishCard
+    operations={operations}
+    onOperationNameChange={(name) => setOperationName(name)}
+    onPublishToIPFS={handlePublishToIPFS}
+    onGetCallData={handleGetCallData}
+    onSendTransaction={handleSendTransaction}
+    publishingState={publishingState}
+/>;
+```
+
+### ExpandableCard
+
+A reusable card component with expand/collapse functionality.
+
+```tsx
+import { ExpandableCard } from "~/app/knowledge-graph/_components/ExpandableCard";
+
+// Inside your component render
+<ExpandableCard title="My Expandable Section" defaultExpanded={true}>
+    <div>Content goes here</div>
+</ExpandableCard>;
+```
+
+### PageHeader
+
+A header component with title, subtitle, and mode toggle.
+
+```tsx
+import { PageHeader } from "~/app/knowledge-graph/_components/PageHeader";
+
+// Inside your component render
+<PageHeader
+    title="Knowledge Graph"
+    subtitle="Create and publish knowledge graph data"
+    showHookDemo={showHookDemo}
+    setShowHookDemo={setShowHookDemo}
+/>;
+```
+
+### StatusFooter
+
+A fixed footer showing status updates and operation counts.
+
+```tsx
+import { StatusFooter } from "~/app/knowledge-graph/_components/StatusFooter";
+
+// Inside your component render
+<StatusFooter
+    status={status}
+    operationsCount={operationsCount}
+    onOperationsClick={() => setShowOperations(true)}
+    isHookDemo={isUsingHooks}
+/>;
+```
+
+### KnowledgeGraphHelp
+
+Provides helpful information and guidance about the knowledge graph.
+
+```tsx
+import { KnowledgeGraphHelp } from "~/app/knowledge-graph/_components/KnowledgeGraphHelp";
+
+// Inside your component render
+<KnowledgeGraphHelp />;
+```
+
+### IdHelpCard
+
+Displays information about ID generation and usage.
+
+```tsx
+import { IdHelpCard } from "~/app/knowledge-graph/_components/IdHelpCard";
+
+// Inside your component render
+<IdHelpCard />;
+```
+
+### OperationsTabCard
+
+A card component with tabs for different operation types.
+
+```tsx
+import { OperationsTabCard } from "~/app/knowledge-graph/_components/OperationsTabCard";
+
+// Inside your component render
+<OperationsTabCard
+    defaultTab="triple"
+    tripleContent={<TripleOperationsCard />}
+    relationContent={<RelationOperationsCard />}
+/>;
+```
+
+### TraditionalInterface
+
+A comprehensive component that provides the traditional knowledge graph interface.
+
+```tsx
+import { TraditionalInterface } from "~/app/knowledge-graph/_components/TraditionalInterface";
+
+// Inside your component render
+<TraditionalInterface
+    operations={operations}
+    entityIds={entityIds}
+    setEntityIds={setEntityIds}
+    clearOperations={clearOperations}
+    onStatusChange={(status) => setStatus(status)}
+    txData={txData}
+    txHash={txHash}
+    publishToIPFS={publishToIPFS}
+    getCallData={getCallData}
+    sendTransaction={sendTransaction}
+/>;
 ```
 
 ## Hooks Tutorial: Building an "Alice Likes Pizza" Application
@@ -402,7 +757,7 @@ Next, add functions to create the person and food entities with proper type info
 // Create Person Entity (Alice)
 const createPersonEntity = () => {
     try {
-        // Generate IDs
+        // Generate IDs using the useGraphIds hook
         const entityId = generateEntityId();
         setPersonId(entityId);
 
@@ -458,7 +813,7 @@ const createPersonEntity = () => {
 // Create Food Entity (Pizza)
 const createFoodEntity = () => {
     try {
-        // Generate IDs
+        // Generate IDs using the useGraphIds hook
         const entityId = generateEntityId();
         setFoodId(entityId);
 
@@ -544,7 +899,7 @@ const createLikesRelation = () => {
     }
 
     try {
-        // Generate a relation type ID for "likes"
+        // Generate a relation type ID using the useGraphIds hook
         const likesRelationTypeId = generateRelationTypeId();
 
         // Create the relation data
