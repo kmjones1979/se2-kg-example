@@ -7,6 +7,7 @@ export * from "./useEntityIdState";
 export * from "./useOperationsTracking";
 export * from "./useEntityIdManagement";
 export * from "./useOperationsPublishing";
+export * from "./useGraphRelations";
 
 /**
  * Knowledge Graph Hooks
