@@ -617,3 +617,664 @@ You can use this space for testing or enter your own space ID.
 -   [GRC-20 SDK GitHub Repository](https://github.com/graphprotocol/grc-20-ts)
 -   [The Graph Official Website](https://thegraph.com)
 -   [Scaffold-ETH 2 Documentation](https://docs.scaffoldeth.io)
+
+## Components and Hooks Documentation
+
+This section provides an overview of the key components and hooks used in the Knowledge Graph application, with usage examples for developers.
+
+### Core Hooks
+
+#### 1. `useGraphOperations`
+
+This hook manages knowledge graph operations such as adding/removing triples and relations.
+
+```typescript
+import { useGraphOperations } from "~/app/knowledge-graph/_hooks/useGraphOperations";
+
+// Inside your component
+const {
+    operations, // Array of all tracked operations
+    operationsCount, // Count of operations
+    lastStatus, // Most recent status message
+    addTriple, // Function to add a triple
+    removeTriple, // Function to remove a triple
+    addRelation, // Function to add a relation
+    removeRelation, // Function to remove a relation
+    clearOperations, // Function to clear all operations
+    setStatus, // Function to set status message
+} = useGraphOperations();
+
+// Example: Add a triple operation
+const tripleResult = addTriple(
+    "entity-123", // Entity ID
+    "attribute-456", // Attribute ID
+    { type: "TEXT", value: "John" } // Value with type
+);
+
+// Example: Add a relation
+const relationResult = addRelation(
+    "person-123", // From Entity ID
+    "likes-relation-789", // Relation Type ID
+    "food-456" // To Entity ID
+);
+```
+
+#### 2. `useGraphPublishing`
+
+This hook manages the publishing workflow: IPFS → Transaction data → Blockchain.
+
+```typescript
+import { useGraphPublishing } from "~/app/knowledge-graph/_hooks/useGraphPublishing";
+
+// Inside your component
+const {
+    // State
+    spaceId, // Current space ID
+    operationName, // Name of operation being published
+    ipfsCid, // IPFS CID after publishing
+    txData, // Transaction data for on-chain commitment
+    txHash, // Transaction hash after sending
+    status, // Current status of publishing workflow
+    step, // Current step in publishing workflow
+
+    // Functions
+    setSpaceId, // Update space ID
+    setOperationName, // Set operation name
+    publishToIPFS, // Publish operations to IPFS
+    getCallData, // Get transaction data for the IPFS CID
+    sendTransaction, // Send transaction with the provided data
+    publishToChain, // Complete publishing flow (IPFS → Call Data → Transaction)
+} = useGraphPublishing("YOUR_SPACE_ID");
+
+// Example: Complete publishing workflow
+const handlePublish = async () => {
+    const rawOperations = operations.map((op) => op.data);
+    const result = await publishToChain(rawOperations, "0xYourWalletAddress");
+
+    if (result) {
+        console.log(`Publication successful! Transaction hash: ${result}`);
+    }
+};
+```
+
+#### 3. `useEntityState`
+
+This hook manages entities and their attributes and relations.
+
+```typescript
+import { useEntityState } from "~/app/knowledge-graph/_hooks/useEntityState";
+
+// Inside your component
+const {
+    entities, // Array of all entities
+    relations, // Array of all relations
+    createEntity, // Create a new entity
+    addEntityAttribute, // Add an attribute to an entity
+    createRelation, // Create a relation between entities
+    removeRelation, // Remove a relation
+    getEntity, // Get an entity by ID
+    getRelation, // Get a relation by ID
+    getEntityRelations, // Get all relations for an entity
+} = useEntityState();
+
+// Example: Create an entity with attributes
+const person = createEntity("entity-123", "Alice");
+const withAttributes = addEntityAttribute(
+    "entity-123",
+    "attribute-456",
+    "TEXT",
+    "Alice Johnson",
+    "name"
+);
+
+// Example: Create a relation
+const relation = createRelation(
+    "person-123", // From entity ID
+    "likes-relation-789", // Relation type ID
+    "food-456", // To entity ID
+    "relation-unique-id", // Optional relation ID
+    "likes" // Optional relation name
+);
+```
+
+#### 4. `useOperationsLog`
+
+This hook manages a log of operations with tracking capabilities.
+
+```typescript
+import { useOperationsLog } from "~/app/knowledge-graph/_hooks/useOperationsLog";
+
+// Inside your component
+const {
+    operations, // Array of all operations
+    operationsRef, // Ref to operations (useful for async contexts)
+    addOperation, // Add a new operation
+    removeOperation, // Remove an operation
+    clearOperations, // Clear all operations
+    getRawOperations, // Get raw operations data (for publishing)
+    trackOperation, // Track operation with backup mechanism
+} = useOperationsLog();
+
+// Example: Add and track operation
+const newOp = addOperation({
+    type: "TRIPLE",
+    data: {
+        /* operation data */
+    },
+});
+
+// Example: Track with safety mechanism
+const { ensureTracked } = trackOperation({
+    type: "RELATION",
+    data: {
+        /* relation data */
+    },
+});
+
+// Call ensureTracked later to verify the operation was added
+ensureTracked();
+```
+
+### UI Components
+
+#### 1. `OperationsLog`
+
+Displays a log of operations with formatting options.
+
+```tsx
+import { OperationsLog } from "~/app/knowledge-graph/_components/OperationsLog";
+
+// Inside your component render
+<OperationsLog
+    ops={operations} // Array of operations to display
+    clearOps={clearOperations} // Function to clear operations
+    showRawJson={false} // Optional: show raw JSON
+/>;
+```
+
+#### 2. `HookDemoCard`
+
+Provides a demonstration of using hooks for knowledge graph operations.
+
+```tsx
+import { HookDemoCard } from "~/app/knowledge-graph/_components/HookDemoCard";
+
+// Inside your component render
+<HookDemoCard
+    onStatusChange={(status) => console.log(`Status: ${status}`)}
+    onOperationsCountChange={(count) => console.log(`Operations: ${count}`)}
+/>;
+```
+
+#### 3. `TripleOperationsCard`
+
+UI for creating and managing triple operations.
+
+```tsx
+import { TripleOperationsCard } from "~/app/knowledge-graph/_components/TripleOperationsCard";
+
+// Inside your component render
+<TripleOperationsCard />;
+```
+
+#### 4. `RelationOperationsCard`
+
+UI for creating and managing relation operations.
+
+```tsx
+import { RelationOperationsCard } from "~/app/knowledge-graph/_components/RelationOperationsCard";
+
+// Inside your component render
+<RelationOperationsCard />;
+```
+
+## Step-by-Step: Implementing "Alice likes Pizza" Example
+
+This step-by-step guide demonstrates how to implement the "Alice likes Pizza" example using the hooks system.
+
+### Step 1: Set Up Component Structure
+
+```tsx
+import { useState, useRef } from "react";
+import { useGraphOperations } from "~/app/knowledge-graph/_hooks/useGraphOperations";
+import { useGraphPublishing } from "~/app/knowledge-graph/_hooks/useGraphPublishing";
+import { OperationsLog } from "~/app/knowledge-graph/_components/OperationsLog";
+
+const AlicePizzaExample = () => {
+    // State for IDs and values
+    const [personId, setPersonId] = useState("");
+    const [personNameAttrId, setPersonNameAttrId] = useState("");
+    const [foodId, setFoodId] = useState("");
+    const [foodNameAttrId, setFoodNameAttrId] = useState("");
+    const [relationTypeId, setRelationTypeId] = useState("");
+    const [relationId, setRelationId] = useState("");
+    const [status, setStatus] = useState("Ready");
+
+    // Use hooks
+    const {
+        operations,
+        operationsCount,
+        addTriple,
+        addRelation,
+        clearOperations,
+    } = useGraphOperations();
+
+    const { publishToChain, setOperationName } = useGraphPublishing();
+
+    // Helper functions for ID generation
+    const generateEntityId = () =>
+        `entity-${Math.random().toString(36).substring(2, 10)}`;
+    const generateAttributeId = () =>
+        `attr-${Math.random().toString(36).substring(2, 10)}`;
+    const generateRelationTypeId = () =>
+        `reltype-${Math.random().toString(36).substring(2, 10)}`;
+    const generateRelationId = () =>
+        `relation-${Math.random().toString(36).substring(2, 10)}`;
+
+    // UI rendering...
+};
+```
+
+### Step 2: Implement Entity Creation Functions
+
+```tsx
+// Add to the AlicePizzaExample component
+
+// Create Person Entity (Alice)
+const createPersonEntity = () => {
+    try {
+        // Generate IDs if not already set
+        const entityId = personId || generateEntityId();
+        const nameAttrId = personNameAttrId || generateAttributeId();
+
+        // Store IDs
+        setPersonId(entityId);
+        setPersonNameAttrId(nameAttrId);
+
+        // Create the triple for person's name
+        const result = addTriple(entityId, nameAttrId, {
+            type: "TEXT",
+            value: "Alice",
+        });
+
+        setStatus(`Created person entity: Alice (${entityId})`);
+        return entityId;
+    } catch (error) {
+        setStatus(
+            `Error creating person: ${
+                error instanceof Error ? error.message : String(error)
+            }`
+        );
+        console.error("Error creating person:", error);
+        return null;
+    }
+};
+
+// Create Food Entity (Pizza)
+const createFoodEntity = () => {
+    try {
+        // Generate IDs if not already set
+        const entityId = foodId || generateEntityId();
+        const nameAttrId = foodNameAttrId || generateAttributeId();
+
+        // Store IDs
+        setFoodId(entityId);
+        setFoodNameAttrId(nameAttrId);
+
+        // Create the triple for food's name
+        const result = addTriple(entityId, nameAttrId, {
+            type: "TEXT",
+            value: "Pizza",
+        });
+
+        // Add food type attribute
+        const typeAttrId = generateAttributeId();
+        addTriple(entityId, typeAttrId, { type: "TEXT", value: "Italian" });
+
+        setStatus(`Created food entity: Pizza (${entityId})`);
+        return entityId;
+    } catch (error) {
+        setStatus(
+            `Error creating food: ${
+                error instanceof Error ? error.message : String(error)
+            }`
+        );
+        console.error("Error creating food:", error);
+        return null;
+    }
+};
+```
+
+### Step 3: Implement Relation Creation Function
+
+```tsx
+// Add to the AlicePizzaExample component
+
+// Create Relation (Alice likes Pizza)
+const createRelation = () => {
+    try {
+        if (!personId || !foodId) {
+            setStatus("Please create both person and food entities first");
+            return null;
+        }
+
+        // Generate IDs if not already set
+        const relTypeId = relationTypeId || generateRelationTypeId();
+        const relId = relationId || generateRelationId();
+
+        // Store IDs
+        setRelationTypeId(relTypeId);
+        setRelationId(relId);
+
+        // Create the relation
+        const result = addRelation(
+            personId, // From: Alice
+            relTypeId, // Relation type: likes
+            foodId, // To: Pizza
+            relId // Explicit relation ID
+        );
+
+        setStatus(`Created relation: Alice likes Pizza`);
+        return relId;
+    } catch (error) {
+        setStatus(
+            `Error creating relation: ${
+                error instanceof Error ? error.message : String(error)
+            }`
+        );
+        console.error("Error creating relation:", error);
+        return null;
+    }
+};
+```
+
+### Step 4: Implement Demo Workflow Function
+
+```tsx
+// Add to the AlicePizzaExample component
+
+// Run the full demo workflow
+const runDemo = () => {
+    clearOperations(); // Start fresh
+    setStatus("Starting demo workflow...");
+
+    // Create entities and relation with proper sequencing
+    setTimeout(() => {
+        const personEntityId = createPersonEntity();
+
+        if (personEntityId) {
+            setTimeout(() => {
+                const foodEntityId = createFoodEntity();
+
+                if (foodEntityId) {
+                    setTimeout(() => {
+                        const relationEntityId = createRelation();
+
+                        if (relationEntityId) {
+                            setStatus(
+                                "Demo complete! Alice likes Pizza relation created."
+                            );
+                        }
+                    }, 500);
+                }
+            }, 500);
+        }
+    }, 100);
+};
+```
+
+### Step 5: Implement Publishing Function
+
+```tsx
+// Add to the AlicePizzaExample component
+
+// Publish to blockchain
+const publishDemo = async () => {
+    if (operations.length === 0) {
+        setStatus("No operations to publish");
+        return;
+    }
+
+    setStatus("Publishing operations...");
+    setOperationName("Alice likes Pizza Demo");
+
+    try {
+        // Get raw operations data
+        const rawOps = operations.map((op) => op.data);
+
+        // Publish to chain (IPFS → Transaction)
+        const result = await publishToChain(rawOps);
+
+        if (result) {
+            setStatus(`Published successfully! Transaction hash: ${result}`);
+        } else {
+            setStatus("Publication failed");
+        }
+    } catch (error) {
+        setStatus(
+            `Error publishing: ${
+                error instanceof Error ? error.message : String(error)
+            }`
+        );
+        console.error("Publishing error:", error);
+    }
+};
+```
+
+### Step 6: Implement UI Rendering
+
+```tsx
+// Add to the AlicePizzaExample component
+
+return (
+    <div className="card bg-base-100 shadow-xl">
+        <div className="card-body">
+            <h2 className="card-title">Alice Likes Pizza Example</h2>
+
+            <div className="mt-4 space-y-4">
+                <div className="flex flex-col gap-2">
+                    <div className="text-sm font-semibold">Entity IDs</div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <div>
+                            <label className="label">Person ID (Alice)</label>
+                            <input
+                                type="text"
+                                className="input input-bordered w-full"
+                                value={personId}
+                                onChange={(e) => setPersonId(e.target.value)}
+                                placeholder="Generate or enter ID"
+                            />
+                            <button
+                                className="btn btn-xs mt-1"
+                                onClick={() => setPersonId(generateEntityId())}
+                            >
+                                Generate
+                            </button>
+                        </div>
+                        <div>
+                            <label className="label">Food ID (Pizza)</label>
+                            <input
+                                type="text"
+                                className="input input-bordered w-full"
+                                value={foodId}
+                                onChange={(e) => setFoodId(e.target.value)}
+                                placeholder="Generate or enter ID"
+                            />
+                            <button
+                                className="btn btn-xs mt-1"
+                                onClick={() => setFoodId(generateEntityId())}
+                            >
+                                Generate
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                    <div className="text-sm font-semibold">Relation</div>
+                    <div>
+                        <label className="label">
+                            Relation Type ID (likes)
+                        </label>
+                        <input
+                            type="text"
+                            className="input input-bordered w-full"
+                            value={relationTypeId}
+                            onChange={(e) => setRelationTypeId(e.target.value)}
+                            placeholder="Generate or enter ID"
+                        />
+                        <button
+                            className="btn btn-xs mt-1"
+                            onClick={() =>
+                                setRelationTypeId(generateRelationTypeId())
+                            }
+                        >
+                            Generate
+                        </button>
+                    </div>
+                </div>
+
+                <div className="divider"></div>
+
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        className="btn btn-primary"
+                        onClick={createPersonEntity}
+                    >
+                        1. Create Alice
+                    </button>
+                    <button
+                        className="btn btn-primary"
+                        onClick={createFoodEntity}
+                    >
+                        2. Create Pizza
+                    </button>
+                    <button
+                        className="btn btn-primary"
+                        onClick={createRelation}
+                    >
+                        3. Create 'Likes' Relation
+                    </button>
+                    <button className="btn btn-accent" onClick={runDemo}>
+                        Run Full Demo
+                    </button>
+                </div>
+
+                <div className="divider"></div>
+
+                <button
+                    className="btn btn-secondary w-full"
+                    onClick={publishDemo}
+                    disabled={operations.length === 0}
+                >
+                    Publish to Blockchain
+                </button>
+            </div>
+
+            <div className="divider"></div>
+
+            <div className="flex items-center justify-between">
+                <div className="font-semibold">Status:</div>
+                <div className="badge badge-info">{status}</div>
+            </div>
+
+            <div className="divider"></div>
+
+            <div className="bg-base-200 p-4 rounded-lg">
+                <OperationsLog
+                    ops={operations}
+                    clearOps={clearOperations}
+                    showRawJson={true}
+                />
+            </div>
+        </div>
+    </div>
+);
+```
+
+### Step 7: Use the Example Component
+
+```tsx
+// In your main page component
+import { AlicePizzaExample } from "~/app/knowledge-graph/_components/AlicePizzaExample";
+
+export default function KnowledgeGraphPage() {
+    return (
+        <div className="container mx-auto p-4">
+            <h1 className="text-3xl font-bold mb-8">Knowledge Graph Demo</h1>
+            <AlicePizzaExample />
+        </div>
+    );
+}
+```
+
+## Error Handling in the Knowledge Graph Hooks
+
+The hooks system implements comprehensive error handling to provide clear feedback on transaction failures and other issues:
+
+```typescript
+// Example of enhanced error handling in the sendTransaction function
+const sendTransaction = async (): Promise<`0x${string}` | null> => {
+    if (!state.txData) {
+        console.error("No transaction data available");
+        return null;
+    }
+
+    try {
+        setState({ ...state, status: "sending" });
+
+        // Log transaction details for debugging
+        console.log("Sending transaction to:", state.txData.to);
+        console.log("Transaction data length:", state.txData.data.length);
+        console.log(
+            "Transaction data (subset):",
+            state.txData.data.substring(0, 66) + "..."
+        );
+
+        // Send transaction
+        const hash = await transactor({
+            to: state.txData.to,
+            value: BigInt(0),
+            data: state.txData.data as `0x${string}`,
+        });
+
+        if (hash) {
+            console.log(`Transaction sent successfully! Hash: ${hash}`);
+            setState((prev) => ({
+                ...prev,
+                txHash: hash,
+                status: "success",
+                step: 4,
+            }));
+            return hash;
+        } else {
+            console.error("Transaction was sent but no hash was returned");
+            return null;
+        }
+    } catch (error) {
+        // Enhanced error details
+        const errorName = error instanceof Error ? error.name : "Unknown";
+        const errorMessage =
+            error instanceof Error ? error.message : "No message available";
+
+        // User-friendly error messages
+        let userMessage = "Transaction failed";
+        if (errorMessage.includes("user rejected")) {
+            userMessage = "Transaction was rejected by user";
+        } else if (errorMessage.includes("insufficient funds")) {
+            userMessage = "Insufficient funds to complete the transaction";
+        }
+
+        console.error(
+            `Error details - Name: ${errorName}, Message: ${errorMessage}`
+        );
+        setState((prev) => ({
+            ...prev,
+            status: "error",
+            error: userMessage,
+            errorDetails: `${errorName}: ${errorMessage}`,
+        }));
+        return null;
+    }
+};
+```

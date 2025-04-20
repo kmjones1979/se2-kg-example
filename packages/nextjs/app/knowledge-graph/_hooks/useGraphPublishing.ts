@@ -10,6 +10,8 @@ interface PublishingState {
   txHash: `0x${string}` | null;
   status: string;
   step: number;
+  error?: string;
+  errorDetails?: string;
 }
 
 // Interface for callback data response
@@ -316,101 +318,87 @@ export const useGraphPublishing = (initialSpaceId = "LB1JjNpxXBjP7caanTx3bP") =>
   };
 
   /**
-   * Send transaction with connector or Geo smart account
-   * @param useSmartAccount Whether to use the Geo smart account instead of the connected wallet
-   * @param privateKey Private key for the Geo smart account (required if useSmartAccount is true)
+   * Attempt to send a transaction with the provided data
+   * This function handles all the wallet-related checks and error handling
    */
-  const sendTransaction = async (useSmartAccount = false, privateKey?: string): Promise<`0x${string}` | null> => {
-    if (!state.txData || !state.txData.to || !state.txData.data) {
-      setStatus("Transaction data is invalid");
+  const sendTransaction = async (): Promise<`0x${string}` | null> => {
+    if (!state.txData) {
+      console.error("No transaction data available");
+      return null;
+    }
+
+    // Validate that the txData contains necessary properties
+    if (!state.txData.to || !state.txData.data) {
+      console.error("Invalid transaction data:", state.txData);
       return null;
     }
 
     try {
-      setStatus("Sending transaction...");
-      console.log("Sending transaction with data:", {
-        spaceId: state.spaceId,
+      setState({ ...state, status: "sending" });
+
+      // Log the transaction data being sent
+      console.log("Sending transaction to:", state.txData.to);
+      console.log("Transaction data length:", state.txData.data.length);
+      console.log("Transaction data (subset):", state.txData.data.substring(0, 66) + "...");
+      console.log("Space ID:", state.spaceId);
+
+      // Send the transaction using the existing transactor hook
+      const hash = await transactor({
         to: state.txData.to,
-        data: `${state.txData.data.substring(0, 64)}...${state.txData.data.substring(state.txData.data.length - 64)}`,
-        dataLength: state.txData.data.length,
-        useSmartAccount,
+        value: BigInt(0),
+        data: state.txData.data as `0x${string}`,
       });
-      console.log(`Transaction is targeting space ID: ${state.spaceId}`);
 
-      let hash: `0x${string}` | undefined;
-
-      if (useSmartAccount) {
-        if (!privateKey) {
-          setStatus("Private key is required when using smart account");
-          return null;
-        }
-
-        try {
-          console.log("Using Geo smart account wallet...");
-          const smartAccountWalletClient = await getSmartAccountWalletClient({
-            privateKey: (privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`) as `0x${string}`,
-          });
-
-          const txResult = await smartAccountWalletClient.sendTransaction({
-            to: state.txData.to as `0x${string}`,
-            value: 0n,
-            data: state.txData.data as `0x${string}`,
-          });
-
-          hash = txResult;
-          console.log("Smart account transaction hash:", hash);
-        } catch (smartAccountError) {
-          console.error("Smart account transaction failed:", smartAccountError);
-          throw smartAccountError;
-        }
-      } else {
-        // Use the connected wallet via transactor
-        hash = await transactor({
-          to: state.txData.to,
-          value: BigInt(0),
-          data: state.txData.data as `0x${string}`,
-        });
-      }
-
-      console.log("Transaction hash received:", hash);
-
-      // Ensure we have a valid hash (transactor might return undefined)
       if (hash) {
+        console.log(`📝 Transaction sent! Hash: ${hash}`);
         setState(prev => ({
           ...prev,
           txHash: hash,
-          status: "Transaction sent",
+          status: "success",
           step: 4,
         }));
         return hash;
       } else {
-        console.warn("Transaction was sent but no hash was returned");
-        setStatus("Transaction sent but no hash was returned");
+        console.error("Transaction was sent but no hash was returned");
+        setState(prev => ({
+          ...prev,
+          status: "error",
+          error: "No transaction hash returned",
+        }));
         return null;
       }
     } catch (error) {
+      // Enhanced error logging
       console.error("Transaction failed:", error);
 
-      // Extract more detailed error information
-      let errorMessage = "Transaction failed";
+      // Extract detailed error information
+      const errorName = error instanceof Error ? error.name : "Unknown";
+      const errorMessage = error instanceof Error ? error.message : "No message available";
+      const errorStack = error instanceof Error ? error.stack : "No stack trace available";
 
-      if (error instanceof Error) {
-        errorMessage = error.message;
-        console.error("Error details:", {
-          name: error.name,
-          message: error.message,
-          stack: error.stack,
-        });
+      console.error(`Error details - Name: ${errorName}, Message: ${errorMessage}`);
+      console.error(`Stack trace: ${errorStack}`);
 
-        // Handle common wallet errors
-        if (errorMessage.includes("user rejected")) {
-          errorMessage = "Transaction was rejected by the user";
-        } else if (errorMessage.includes("insufficient funds")) {
-          errorMessage = "Insufficient funds for transaction";
-        }
+      // Provide specific messages for common wallet-related errors
+      let userMessage = "Transaction failed";
+
+      if (errorMessage.includes("user rejected")) {
+        userMessage = "Transaction was rejected by user";
+      } else if (errorMessage.includes("insufficient funds")) {
+        userMessage = "Insufficient funds to complete the transaction";
+      } else if (
+        errorMessage.includes("nonce too low") ||
+        errorMessage.includes("replacement transaction underpriced")
+      ) {
+        userMessage = "Transaction nonce issue. Please try again";
       }
 
-      setStatus(`Error sending transaction: ${errorMessage}`);
+      setState(prev => ({
+        ...prev,
+        status: "error",
+        error: userMessage,
+        errorDetails: `${errorName}: ${errorMessage}`,
+      }));
       return null;
     }
   };
@@ -439,7 +427,7 @@ export const useGraphPublishing = (initialSpaceId = "LB1JjNpxXBjP7caanTx3bP") =>
     if (!txData) return null;
 
     // Step 3: Send transaction
-    return await sendTransaction(useSmartAccount, privateKey);
+    return await sendTransaction();
   };
 
   /**
