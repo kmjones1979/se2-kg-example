@@ -17,22 +17,62 @@ export async function POST(req: NextRequest) {
 
     const url = `${baseUrl}/space/${spaceId}/edit/calldata`;
     console.log("Proxying to:", url);
+    console.log("Request body:", JSON.stringify({ cid, network }));
 
     // Forward to external API
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cid, network }),
-    });
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cid, network }),
+      });
 
-    const responseData = await response.json().catch(() => null);
+      console.log("External API response status:", response.status);
+      console.log("External API response headers:", Object.fromEntries([...response.headers.entries()]));
 
-    if (!response.ok) {
-      console.error("External API error:", responseData);
-      return NextResponse.json({ error: "External API error", details: responseData }, { status: response.status });
+      // Try to get the response text first to avoid JSON parsing errors
+      const responseText = await response.text();
+      console.log("External API response text:", responseText);
+
+      // Try to parse as JSON if possible
+      let responseData;
+      try {
+        responseData = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error("Failed to parse response as JSON:", parseError);
+        responseData = { rawText: responseText };
+      }
+
+      if (!response.ok) {
+        console.error("External API error:", {
+          status: response.status,
+          statusText: response.statusText,
+          url,
+          responseData,
+        });
+        return NextResponse.json(
+          {
+            error: "External API error",
+            details: responseData,
+            status: response.status,
+            url,
+          },
+          { status: response.status },
+        );
+      }
+
+      return NextResponse.json(responseData);
+    } catch (fetchError) {
+      console.error("Fetch error:", fetchError);
+      return NextResponse.json(
+        {
+          error: "Failed to connect to external API",
+          message: fetchError instanceof Error ? fetchError.message : String(fetchError),
+          url,
+        },
+        { status: 502 },
+      );
     }
-
-    return NextResponse.json(responseData);
   } catch (error) {
     console.error("Error in API route:", error);
     return NextResponse.json(
