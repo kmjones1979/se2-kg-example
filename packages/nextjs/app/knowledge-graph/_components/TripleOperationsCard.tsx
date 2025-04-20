@@ -31,6 +31,10 @@ export const TripleOperationsCard = ({
   const [internalEntityId, setInternalEntityId] = useState("");
   const [internalAttributeId, setInternalAttributeId] = useState("");
 
+  // New state for entity type and attribute name
+  const [entityType, setEntityType] = useState("");
+  const [attributeName, setAttributeName] = useState("");
+
   // Optionally use our custom hooks
   const { generateEntityId, generateAttributeId } = useGraphIds();
   const { addTriple, removeTriple, setStatus: hookSetStatus } = useGraphOperations();
@@ -122,6 +126,40 @@ export const TripleOperationsCard = ({
         value,
       });
 
+      // Add entity type if provided
+      if (entityType) {
+        const typeTripleOp = Triple.make({
+          entityId,
+          attributeId: "type",
+          value: {
+            type: "TEXT",
+            value: entityType,
+          },
+        });
+
+        if (addOperation) {
+          console.log("Adding entity type triple:", typeTripleOp);
+          addOperation(typeTripleOp);
+        }
+      }
+
+      // Add attribute name if provided
+      if (attributeName) {
+        const nameTripleOp = Triple.make({
+          entityId: attributeId,
+          attributeId: "name",
+          value: {
+            type: "TEXT",
+            value: attributeName,
+          },
+        });
+
+        if (addOperation) {
+          console.log("Adding attribute name triple:", nameTripleOp);
+          addOperation(nameTripleOp);
+        }
+      }
+
       // Direct approach - always call addOperation
       if (addOperation) {
         console.log("Using operation approach regardless of hooks");
@@ -184,37 +222,74 @@ export const TripleOperationsCard = ({
       <div className="card-body">
         <h2 className="card-title">Triple Operations</h2>
         <div className="grid gap-4">
-          <div className="form-control">
-            <label className="label">
-              <span className="label-text">Entity ID</span>
-              <button className="btn btn-xs btn-outline btn-primary" onClick={generateEntityHandler}>
-                Generate
-              </button>
-            </label>
-            <input
-              type="text"
-              placeholder="Entity ID"
-              className="input input-bordered"
-              value={entityId}
-              onChange={e => !propEntityId && setInternalEntityId(e.target.value)}
-              readOnly={!!propEntityId}
-            />
+          {/* Entity Information */}
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="form-control">
+              <label className="label">
+                <span className="label-text">Entity ID</span>
+                <button className="btn btn-xs btn-outline btn-primary" onClick={generateEntityHandler}>
+                  Generate
+                </button>
+              </label>
+              <input
+                type="text"
+                placeholder="Entity ID"
+                className="input input-bordered"
+                value={entityId}
+                onChange={e => !propEntityId && setInternalEntityId(e.target.value)}
+                readOnly={!!propEntityId}
+              />
+            </div>
+
+            {/* New Entity Type Input */}
+            <div className="form-control">
+              <label className="label">
+                <span className="label-text">Entity Type (optional)</span>
+                <span className="label-text-alt text-xs text-info">Creates a "type" triple</span>
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Person, Food, Location"
+                className="input input-bordered"
+                value={entityType}
+                onChange={e => setEntityType(e.target.value)}
+              />
+            </div>
           </div>
-          <div className="form-control">
-            <label className="label">
-              <span className="label-text">Attribute ID</span>
-              <button className="btn btn-xs btn-outline btn-primary" onClick={generateAttributeHandler}>
-                Generate
-              </button>
-            </label>
-            <input
-              type="text"
-              placeholder="Attribute ID"
-              className="input input-bordered"
-              value={attributeId}
-              onChange={e => !propAttributeId && setInternalAttributeId(e.target.value)}
-              readOnly={!!propAttributeId}
-            />
+
+          {/* Attribute Information */}
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="form-control">
+              <label className="label">
+                <span className="label-text">Attribute ID</span>
+                <button className="btn btn-xs btn-outline btn-primary" onClick={generateAttributeHandler}>
+                  Generate
+                </button>
+              </label>
+              <input
+                type="text"
+                placeholder="Attribute ID"
+                className="input input-bordered"
+                value={attributeId}
+                onChange={e => !propAttributeId && setInternalAttributeId(e.target.value)}
+                readOnly={!!propAttributeId}
+              />
+            </div>
+
+            {/* New Attribute Name Input */}
+            <div className="form-control">
+              <label className="label">
+                <span className="label-text">Attribute Name (optional)</span>
+                <span className="label-text-alt text-xs text-info">Creates a "name" triple</span>
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. name, age, type"
+                className="input input-bordered"
+                value={attributeName}
+                onChange={e => setAttributeName(e.target.value)}
+              />
+            </div>
           </div>
 
           {/* Value Type Selector */}

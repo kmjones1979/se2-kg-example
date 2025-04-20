@@ -11,12 +11,20 @@ export const OperationsLog = ({ ops, clearOps }: OperationsLogProps) => {
   // For debugging - show the first operation details
   if (ops?.length > 0) {
     console.log("First operation:", ops[0]);
-    console.log("First operation data:", ops[0]?.data);
+    // Only log data if it exists
+    if (ops[0]?.data) {
+      console.log("First operation data:", ops[0]?.data);
+    }
+    // Always log triple field for debugging
+    console.log("First operation triple field:", ops[0]?.triple);
 
     // Add extra debug logging for the SET_TRIPLE case
     if (ops[0]?.type === "SET_TRIPLE" || ops[0]?.op === "SET_TRIPLE") {
       console.log("Found SET_TRIPLE format:", ops[0]);
-      console.log("Triple data:", ops[0]?.triple);
+      // Only log triple data if it exists
+      if (ops[0]?.triple) {
+        console.log("Triple data:", ops[0]?.triple);
+      }
     }
   }
 
@@ -77,11 +85,39 @@ export const OperationsLog = ({ ops, clearOps }: OperationsLogProps) => {
     }
   }, [showDebugInfo, ops]);
 
+  // Debug formatted operations
+  useEffect(() => {
+    if (ops?.length > 0) {
+      // Wait for formatRawOps to be available
+      setTimeout(() => {
+        try {
+          const formattedOps = formatRawOps(ops);
+          console.log("Formatted operations:", formattedOps);
+        } catch (error) {
+          console.error("Error formatting operations for debug:", error);
+        }
+      }, 100);
+    }
+  }, [ops]);
+
   // Function to get badge color based on operation type
   const getBadgeColor = (type: string, action: string) => {
+    // Ensure we don't have undefined type
+    if (!type) return "badge-neutral";
+
+    // Handle triple operations (including SET_TRIPLE)
     if (type === "triple" && action === "add") return "badge-success";
+    if (type === "SET_TRIPLE") return "badge-success";
+    if (type.includes("TRIPLE")) return "badge-success";
+
+    // Handle relation operations
     if (type === "relation" && action === "add") return "badge-secondary";
+    if (type === "SET_RELATION") return "badge-secondary";
+    if (type.includes("RELATION")) return "badge-secondary";
+
+    // Handle remove operations
     if (action === "remove") return "badge-error";
+
     return "badge-neutral";
   };
 
@@ -120,23 +156,58 @@ export const OperationsLog = ({ ops, clearOps }: OperationsLogProps) => {
   const getOperationDisplayName = (op: any) => {
     if (!op) return "Unknown Operation";
 
-    if (op.type === "triple" && op.action === "add") {
-      // Check if it's an entity creation (name attribute)
+    // Handle all possible Triple operation formats
+    if (
+      (op.type === "triple" && op.action === "add") ||
+      op.type === "SET_TRIPLE" ||
+      op.op === "SET_TRIPLE" ||
+      (op.type && op.type.includes("TRIPLE"))
+    ) {
+      // Check for entity/attribute data from different possible locations
+      const entityId =
+        op.entityId ||
+        op.entity ||
+        op.data?.entityId ||
+        op.data?.entity ||
+        (op.triple ? op.triple.entityId || op.triple.entity : null);
+
+      const attributeId =
+        op.attributeId ||
+        op.attribute ||
+        op.data?.attributeId ||
+        op.data?.attribute ||
+        (op.triple ? op.triple.attributeId || op.triple.attribute : null);
+
+      const valueData = op.value || op.data?.value || (op.triple ? op.triple.value : null);
+
+      // Try to determine if this is a name or type attribute
       const isNameAttribute =
-        op.data?.triple?.name === "name" ||
-        (op.data?.triple?.value?.type === "TEXT" && typeof op.data?.triple?.value?.value === "string");
+        attributeId === "name" ||
+        (valueData && typeof valueData === "object" && valueData.type === "TEXT" && attributeId === "name");
 
-      const entityType = op.data?.triple?.entityType || "";
+      const isTypeAttribute = attributeId === "type";
 
-      if (isNameAttribute && entityType) {
+      // Try to get the entity type
+      let entityType = op.entityType || "Entity";
+      if (isTypeAttribute && valueData && valueData.value) {
+        entityType = valueData.value;
+      }
+
+      // Special case for name attributes - they're entity creation/naming operations
+      if (isNameAttribute && entityType !== "Entity") {
         return `Create ${entityType}`;
       } else if (isNameAttribute) {
         return "Create Entity";
       }
 
+      // If it's a type attribute
+      if (isTypeAttribute) {
+        return `Set Type: ${valueData?.value || "unknown"}`;
+      }
+
       // Check if we have an attribute name
-      if (op.data?.triple?.name) {
-        return `Set ${op.data?.triple?.name}`;
+      if (attributeId === "name") {
+        return "Set Name";
       }
 
       return "Add Attribute";
@@ -163,7 +234,14 @@ export const OperationsLog = ({ ops, clearOps }: OperationsLogProps) => {
       return "Remove Relation";
     }
 
-    return `${op.action} ${op.type}`;
+    // Generic fallback
+    if (op.type) {
+      const typeDisplay = op.type.replace(/_/g, " ").toLowerCase();
+      const actionDisplay = op.action || "perform";
+      return `${actionDisplay} ${typeDisplay}`;
+    }
+
+    return "Unknown Operation";
   };
 
   // Format raw operations for easier JSON viewing
@@ -175,25 +253,30 @@ export const OperationsLog = ({ ops, clearOps }: OperationsLogProps) => {
 
     return operations.map(op => {
       try {
+        // Determine the operation type with better fallback handling
+        const opType = op.type || op.op || op.__typename || "UNKNOWN";
+        const opAction = op.action || (opType.includes("SET_") || opType.includes("ADD_") ? "add" : "unknown");
+
         // Start with the core operation data
         const result = {
-          type: op.type || op.op,
-          action: op.action || (op.type === "SET_TRIPLE" || op.op === "SET_TRIPLE" ? "add" : "unknown"),
+          type: opType,
+          action: opAction,
           timestamp: op.timestamp ? formatTimestamp(op.timestamp) : "unknown",
           id: op.id,
         };
 
-        // Handle SET_TRIPLE operation format - support both data.triple and direct triple field
-        if ((op.type === "triple" && op.action === "add") || op.type === "SET_TRIPLE" || op.op === "SET_TRIPLE") {
+        // Handle Triple operation format - support all variations we've seen
+        if (opType === "triple" || opType === "SET_TRIPLE" || opType === "Triple") {
           // Support different data structures - some operations have data.triple, others have triple directly
-          const tripData = op.data?.triple || op.triple || op.data;
+          const tripData = op.data?.triple || op.triple || op;
 
           // Extract entity ID - check all possible locations
           let entityId =
             tripData?.entityId ||
-            op.data?.entityId ||
             tripData?.entity ||
-            (tripData?.triple ? tripData.triple.entityId : null);
+            op.entityId ||
+            op.entity ||
+            (tripData?.triple ? tripData.triple.entityId || tripData.triple.entity : null);
 
           // Try to extract from ID format if still null
           if (!entityId && op.id) {
@@ -206,9 +289,10 @@ export const OperationsLog = ({ ops, clearOps }: OperationsLogProps) => {
           // Extract attribute ID - check all possible locations
           let attributeId =
             tripData?.attributeId ||
-            op.data?.attributeId ||
             tripData?.attribute ||
-            (tripData?.triple ? tripData.triple.attributeId : null);
+            op.attributeId ||
+            op.attribute ||
+            (tripData?.triple ? tripData.triple.attributeId || tripData.triple.attribute : null);
 
           // Try to extract from ID format if still null
           if (!attributeId && op.id) {
@@ -219,56 +303,65 @@ export const OperationsLog = ({ ops, clearOps }: OperationsLogProps) => {
           }
 
           // Extract value data - check all possible locations
-          const valueData = tripData?.value || op.data?.value || (tripData?.triple ? tripData.triple.value : null);
+          const valueData = tripData?.value || op.value || (tripData?.triple ? tripData.triple.value : null);
+
+          // Get the actual value and type from valueData
+          const value = typeof valueData === "object" ? valueData?.value : valueData;
+          const valueType = typeof valueData === "object" ? valueData?.type : typeof valueData;
 
           // Improved attribute name extraction
           const attributeName =
-            tripData?.name || (valueData?.value === "Alice" ? "name" : tripData?.attributeName || "unknown");
+            tripData?.attributeName ||
+            op.attributeName ||
+            (attributeId === "name" ? "name" : attributeId === "type" ? "type" : "unknown");
 
           // Improved entity type detection
-          const entityType =
-            tripData?.entityType ||
-            (valueData?.value === "person" || valueData?.value === "Alice" ? "Person" : "Entity");
+          let entityType = tripData?.entityType || op.entityType || "Entity";
+
+          // If this is a type triple, use its value as the entity type
+          if (attributeId === "type" && value) {
+            entityType = value;
+          }
 
           return {
             ...result,
-            operationType: op.data?.type || op.type || "SET_TRIPLE",
+            operationType: opType,
             entityId: entityId,
             attributeId: attributeId,
             entityType: entityType,
             attributeName: attributeName,
-            value: valueData?.value,
-            valueType: valueData?.type,
+            value: value,
+            valueType: valueType || "TEXT",
           };
         }
 
         // Handle relation operations - with improved handling for our data structure
-        if (op.type === "relation" && op.action === "add" && op.data) {
+        if (opType === "relation" || opType === "SET_RELATION" || opType === "Relation") {
           // Handle our new well-structured relation format
           // Check multiple possible locations for relation data
-          const relationData = op.data.relation || op.data;
+          const relationData = op.data?.relation || op.data || op;
 
           // Try to get the relation name in various formats
           const relationName = relationData.name || (relationData.typeId?.split("-")[1] || "unknown").toUpperCase();
 
           return {
             ...result,
-            operationType: op.data?.type || relationData.type || "SET_RELATION",
+            operationType: opType,
             fromEntity: relationData.fromEntity || "unknown",
-            fromId: relationData.fromId || relationData.from_id,
+            fromId: relationData.fromId || relationData.from || op.fromId || op.from || relationData.from_id,
             toEntity: relationData.toEntity || "unknown",
-            toId: relationData.toId || relationData.to_id,
+            toId: relationData.toId || relationData.to || op.toId || op.to || relationData.to_id,
             relationName: relationName,
-            relationType: relationData.type || relationData.typeId,
-            relationId: relationData.id,
+            relationType: relationData.type || relationData.typeId || relationData.relationTypeId,
+            relationId: relationData.id || op.id,
           };
         }
 
         // Return the base operation with the raw data for other types
         return {
           ...result,
-          operationType: op.data?.type || "UNKNOWN",
-          rawData: op.data,
+          operationType: opType,
+          rawData: op.data || op,
         };
       } catch (error) {
         console.error("Error formatting operation:", error, op);
@@ -373,33 +466,58 @@ export const OperationsLog = ({ ops, clearOps }: OperationsLogProps) => {
 
                   <div className="mt-2 text-xs">
                     {/* Triple Operation (Entity or Attribute) */}
-                    {(op.type === "triple" || op.type === "SET_TRIPLE") && (
+                    {(op.type === "triple" || op.type === "SET_TRIPLE" || op.type?.includes("TRIPLE")) && (
                       <div>
                         <div>
                           <span className="font-semibold">Entity:</span>{" "}
                           {truncateId(
-                            op.data?.triple?.entityId || op.data?.entityId || op.triple?.entity || op.triple?.entityId,
+                            op.data?.triple?.entityId ||
+                              op.data?.triple?.entity ||
+                              op.data?.entityId ||
+                              op.data?.entity ||
+                              op.entityId ||
+                              op.entity ||
+                              op.triple?.entity ||
+                              op.triple?.entityId,
+                          )}
+                          {op.entityType && op.entityType !== "Entity" && (
+                            <span className="ml-1 text-info">({op.entityType})</span>
                           )}
                         </div>
                         <div>
                           <span className="font-semibold">Attribute:</span>{" "}
                           {truncateId(
                             op.data?.triple?.attributeId ||
+                              op.data?.triple?.attribute ||
                               op.data?.attributeId ||
+                              op.data?.attribute ||
+                              op.attributeId ||
+                              op.attribute ||
                               op.triple?.attribute ||
                               op.triple?.attributeId,
                           )}
+                          {op.attributeName && op.attributeName !== "unknown" && (
+                            <span className="ml-1 text-info">({op.attributeName})</span>
+                          )}
                         </div>
-                        {(op.data?.triple?.value || op.data?.value || op.triple?.value) && (
-                          <div>
-                            <span className="font-semibold">Value:</span>{" "}
-                            {op.data?.triple?.value?.value || op.data?.value?.value || op.triple?.value?.value}
-                            <span className="opacity-70">
-                              {" "}
-                              ({op.data?.triple?.value?.type || op.data?.value?.type || op.triple?.value?.type})
-                            </span>
-                          </div>
-                        )}
+                        {/* Unified value display that handles all formats */}
+                        <div>
+                          <span className="font-semibold">Value:</span>{" "}
+                          {op.value ||
+                            op.data?.triple?.value?.value ||
+                            op.data?.value?.value ||
+                            op.triple?.value?.value}
+                          <span className="opacity-70">
+                            {" "}
+                            (
+                            {op.valueType ||
+                              op.data?.triple?.value?.type ||
+                              op.data?.value?.type ||
+                              op.triple?.value?.type ||
+                              "TEXT"}
+                            )
+                          </span>
+                        </div>
                       </div>
                     )}
 
