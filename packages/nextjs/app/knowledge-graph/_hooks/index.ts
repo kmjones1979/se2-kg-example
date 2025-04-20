@@ -4,6 +4,9 @@ export * from "./useGraphPublishing";
 export * from "./useGraphEntities";
 export * from "./useExpandableSections";
 export * from "./useEntityIdState";
+export * from "./useOperationsTracking";
+export * from "./useEntityIdManagement";
+export * from "./useOperationsPublishing";
 
 /**
  * Knowledge Graph Hooks
