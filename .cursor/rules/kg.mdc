@@ -5,6 +5,6 @@ alwaysApply: true
 ---
 # add rules here later once hooks are finalized
 
-Always look in the codebase for resolution related to the kg hooks
+Always look in the codebase for resolution related to the kg hooks and components
 
-Then always look in the SDK docs when you need to see how to implement any changes https://github.com/graphprotocol/grc-20-ts 
+Always look in the SDK docs when you need to see how to implement any changes https://github.com/graphprotocol/grc-20-ts 
