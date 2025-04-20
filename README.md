@@ -11,6 +11,35 @@ This application allows you to create, manage and publish knowledge graph data t
 -   Publish data to IPFS
 -   Submit transactions to record data on-chain
 
+## Table of Contents
+
+-   [Comprehensive Developer Guide](#comprehensive-developer-guide)
+    -   [Core Concepts](#core-concepts)
+    -   [SDK Installation & Setup](#sdk-installation--setup)
+    -   [ID System Architecture](#id-system-architecture)
+    -   [Value Types & Data Formats](#value-types--data-formats)
+    -   [Operation Types](#operation-types)
+    -   [Publication Workflow](#publication-workflow)
+-   [Step-by-Step Tutorial: Creating Entities and Relations](#step-by-step-tutorial-creating-entities-and-relations)
+-   [Advanced SDK Usage Examples](#advanced-sdk-usage-examples)
+-   [ID System Flow](#id-system-flow)
+-   [Supported Value Types](#supported-value-types)
+-   [Knowledge Graph Operations Flow](#knowledge-graph-operations-flow)
+-   [Error Handling](#error-handling)
+-   [Performance Considerations](#performance-considerations)
+-   [Built With](#built-with)
+-   [Getting Started](#getting-started)
+-   [Using a Space ID](#using-a-space-id)
+-   [Resources](#resources)
+-   [Components and Hooks Documentation](#components-and-hooks-documentation)
+    -   [Core Hooks](#core-hooks)
+    -   [UI Components](#ui-components)
+-   [Step-by-Step: Implementing "Alice Likes Pizza" Example](#step-by-step-implementing-alice-likes-pizza-example)
+-   [Error Handling in the Knowledge Graph Hooks](#error-handling-in-the-knowledge-graph-hooks)
+-   [Using the Hypergraph Railway API](#using-the-hypergraph-railway-api)
+-   [Hooks Tutorial: Building an "Alice Likes Pizza" Application](#hooks-tutorial-building-an-alice-likes-pizza-application)
+-   [Configuration System](#configuration-system)
+
 ## Comprehensive Developer Guide
 
 ### Core Concepts
@@ -1059,7 +1088,6 @@ const publishDemo = async () => {
                 error instanceof Error ? error.message : String(error)
             }`
         );
-        console.error("Publishing error:", error);
     }
 };
 ```
@@ -1329,6 +1357,498 @@ The application includes comprehensive error handling for API communications, pr
 -   **404 Not Found**: This might indicate an incorrect path structure in the API URL.
 -   **Invalid Response Format**: If the API response doesn't contain the expected `to` and `data` fields.
 -   **Connection Issues**: If the API endpoint cannot be reached.
+
+## Hooks Tutorial: Building an "Alice Likes Pizza" Application
+
+This tutorial walks through creating a simple React application that demonstrates the "Alice likes Pizza" example using our custom hooks. By following these steps, you'll build a minimal application that creates entities with types, attributes, and relationships.
+
+### Setup Project Structure
+
+First, create a new component that will incorporate all the necessary hooks:
+
+```tsx
+// AliceLikesPizzaDemo.tsx
+import { useState } from "react";
+import {
+    useGraphIds,
+    useGraphOperations,
+    useGraphPublishing,
+    useOperationsTracking,
+} from "~/app/knowledge-graph/_hooks";
+import { OperationsLog } from "~/app/knowledge-graph/_components/OperationsLog";
+
+const AliceLikesPizzaDemo = () => {
+    // State for entity IDs
+    const [personId, setPersonId] = useState("");
+    const [foodId, setFoodId] = useState("");
+
+    // Status for user feedback
+    const [status, setStatus] = useState("Ready");
+
+    // Import necessary hooks
+    const { generateEntityId, generateAttributeId, generateRelationTypeId } =
+        useGraphIds();
+    const { addTriple, addRelation } = useGraphOperations();
+    const { operationsCount, operations, trackOperation, clearOperations } =
+        useOperationsTracking();
+    const {
+        operationName,
+        setOperationName,
+        publishToIPFS,
+        getCallData,
+        sendTransaction,
+        spaceId,
+        setSpaceId,
+    } = useGraphPublishing();
+
+    // Main component logic will go here
+
+    return (
+        <div className="card bg-base-100 shadow-xl">
+            <div className="card-body">
+                <h2 className="card-title">Alice Likes Pizza Demo</h2>
+
+                {/* UI components will go here */}
+
+                <OperationsLog ops={operations} clearOps={clearOperations} />
+            </div>
+        </div>
+    );
+};
+
+export default AliceLikesPizzaDemo;
+```
+
+### Step 1: Implement Entity Creation Functions
+
+Next, add functions to create the person and food entities with proper type information:
+
+```tsx
+// Add to the AlicePizzaExample component
+
+// Create Person Entity (Alice)
+const createPersonEntity = () => {
+    try {
+        // Generate IDs
+        const entityId = generateEntityId();
+        setPersonId(entityId);
+
+        // Create name attribute (with proper typing)
+        const nameAttrId = generateAttributeId();
+
+        // First, create a triple that defines this as a Person type
+        const typeTripleData = {
+            type: "SET_TRIPLE",
+            triple: {
+                entity: entityId,
+                attribute: "type",
+                value: {
+                    type: "TEXT",
+                    value: "Person",
+                },
+            },
+        };
+
+        // Track the type operation
+        trackOperation(typeTripleData);
+
+        // Then create the name triple
+        const nameTripleData = {
+            type: "SET_TRIPLE",
+            triple: {
+                entity: entityId,
+                attribute: nameAttrId,
+                value: {
+                    type: "TEXT",
+                    value: "Alice",
+                },
+                name: "name", // Add explicit name for better display
+            },
+        };
+
+        // Track the name operation and add it through the hook
+        trackOperation(nameTripleData);
+        addTriple(entityId, nameAttrId, { type: "TEXT", value: "Alice" });
+
+        setStatus(`Created person: Alice (${entityId})`);
+        return entityId;
+    } catch (error) {
+        setStatus(
+            `Error creating person: ${
+                error instanceof Error ? error.message : String(error)
+            }`
+        );
+        return null;
+    }
+};
+
+// Create Food Entity (Pizza)
+const createFoodEntity = () => {
+    try {
+        // Generate IDs
+        const entityId = generateEntityId();
+        setFoodId(entityId);
+
+        // Create type attribute (Food)
+        const typeTripleData = {
+            type: "SET_TRIPLE",
+            triple: {
+                entity: entityId,
+                attribute: "type",
+                value: {
+                    type: "TEXT",
+                    value: "Food",
+                },
+            },
+        };
+
+        // Track the type operation
+        trackOperation(typeTripleData);
+
+        // Create name attribute (Pizza)
+        const nameAttrId = generateAttributeId();
+        const nameTripleData = {
+            type: "SET_TRIPLE",
+            triple: {
+                entity: entityId,
+                attribute: nameAttrId,
+                value: {
+                    type: "TEXT",
+                    value: "Pizza",
+                },
+                name: "name", // Add explicit name for better display
+            },
+        };
+
+        // Track the name operation and add it through the hook
+        trackOperation(nameTripleData);
+        addTriple(entityId, nameAttrId, { type: "TEXT", value: "Pizza" });
+
+        // Add an 'origin' attribute
+        const originAttrId = generateAttributeId();
+        const originTripleData = {
+            type: "SET_TRIPLE",
+            triple: {
+                entity: entityId,
+                attribute: originAttrId,
+                value: {
+                    type: "TEXT",
+                    value: "Italian",
+                },
+                name: "origin", // Add explicit name for better display
+            },
+        };
+
+        // Track and add the origin attribute
+        trackOperation(originTripleData);
+        addTriple(entityId, originAttrId, { type: "TEXT", value: "Italian" });
+
+        setStatus(`Created food: Pizza (${entityId})`);
+        return entityId;
+    } catch (error) {
+        setStatus(
+            `Error creating food: ${
+                error instanceof Error ? error.message : String(error)
+            }`
+        );
+        return null;
+    }
+};
+```
+
+### Step 2: Implement Relation Creation Function
+
+Now, add the function to create a "likes" relation between Alice and Pizza:
+
+```tsx
+// Add within your component
+
+// Create the "Likes" relation between Alice and Pizza
+const createLikesRelation = () => {
+    if (!personId || !foodId) {
+        setStatus("Please create both Person and Food entities first");
+        return null;
+    }
+
+    try {
+        // Generate a relation type ID for "likes"
+        const likesRelationTypeId = generateRelationTypeId();
+
+        // Create the relation data
+        const relationData = {
+            type: "SET_RELATION",
+            relation: {
+                from: personId,
+                relationType: likesRelationTypeId,
+                to: foodId,
+            },
+        };
+
+        // Track the relation operation
+        trackOperation(relationData);
+
+        // Add through the hook
+        addRelation(personId, likesRelationTypeId, foodId);
+
+        setStatus(`Created relation: Alice likes Pizza`);
+        return true;
+    } catch (error) {
+        setStatus(
+            `Error creating relation: ${
+                error instanceof Error ? error.message : String(error)
+            }`
+        );
+        return null;
+    }
+};
+```
+
+### Step 3: Implement Publishing Functions
+
+Add functions to handle the publishing workflow:
+
+```tsx
+// Add within your component
+
+// Publish operations to IPFS
+const handlePublishToIPFS = async () => {
+    if (operationsCount === 0) {
+        setStatus("No operations to publish");
+        return;
+    }
+
+    // Set a descriptive name for the edit
+    setOperationName("Alice Likes Pizza Example");
+
+    try {
+        setStatus("Publishing to IPFS...");
+        const ipfsCid = await publishToIPFS(operations);
+
+        if (ipfsCid) {
+            setStatus(`Published to IPFS: ${ipfsCid}`);
+        } else {
+            setStatus("Failed to publish to IPFS");
+        }
+    } catch (error) {
+        setStatus(
+            `IPFS error: ${
+                error instanceof Error ? error.message : String(error)
+            }`
+        );
+    }
+};
+
+// Get transaction data for the published operations
+const handleGetTransactionData = async () => {
+    try {
+        setStatus("Getting transaction data...");
+        const data = await getCallData();
+
+        if (data) {
+            setStatus("Transaction data ready");
+        } else {
+            setStatus("Failed to get transaction data");
+        }
+    } catch (error) {
+        setStatus(
+            `Transaction data error: ${
+                error instanceof Error ? error.message : String(error)
+            }`
+        );
+    }
+};
+
+// Send the transaction to the blockchain
+const handleSendTransaction = async () => {
+    try {
+        setStatus("Sending transaction...");
+        const txHash = await sendTransaction();
+
+        if (txHash) {
+            setStatus(`Transaction sent: ${txHash}`);
+        } else {
+            setStatus("Failed to send transaction");
+        }
+    } catch (error) {
+        setStatus(
+            `Transaction error: ${
+                error instanceof Error ? error.message : String(error)
+            }`
+        );
+    }
+};
+
+// Run the full demo in sequence
+const runFullDemo = () => {
+    setStatus("Starting demo...");
+    clearOperations();
+
+    // First create Alice
+    const aliceId = createPersonEntity();
+    if (!aliceId) return;
+
+    // Then create Pizza
+    const pizzaId = createFoodEntity();
+    if (!pizzaId) return;
+
+    // Finally create the relation
+    createLikesRelation();
+};
+```
+
+### Step 4: Add UI Components
+
+Complete the component's UI structure:
+
+```tsx
+// Replace the UI placeholder in the return statement
+
+return (
+    <div className="card bg-base-100 shadow-xl">
+        <div className="card-body">
+            <h2 className="card-title">Alice Likes Pizza Demo</h2>
+
+            {/* Space ID and status */}
+            <div className="flex flex-col md:flex-row justify-between mb-4">
+                <div className="form-control max-w-xs">
+                    <label className="label">
+                        <span className="label-text">Space ID</span>
+                    </label>
+                    <input
+                        type="text"
+                        className="input input-bordered input-sm"
+                        value={spaceId}
+                        onChange={(e) => setSpaceId(e.target.value)}
+                        placeholder="Enter space ID"
+                    />
+                </div>
+                <div className="mt-4 md:mt-0">
+                    <div className="text-sm opacity-70">Status:</div>
+                    <div className="badge badge-lg">{status}</div>
+                </div>
+            </div>
+
+            {/* Entity creation buttons */}
+            <div className="divider">Create Entities and Relations</div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="card border p-4">
+                    <h3 className="font-bold mb-2">Step 1: Create Person</h3>
+                    <button
+                        className="btn btn-primary w-full"
+                        onClick={createPersonEntity}
+                    >
+                        Create Alice
+                    </button>
+                    {personId && (
+                        <div className="mt-2 text-xs font-mono break-all">
+                            ID: {personId}
+                        </div>
+                    )}
+                </div>
+
+                <div className="card border p-4">
+                    <h3 className="font-bold mb-2">Step 2: Create Food</h3>
+                    <button
+                        className="btn btn-primary w-full"
+                        onClick={createFoodEntity}
+                    >
+                        Create Pizza
+                    </button>
+                    {foodId && (
+                        <div className="mt-2 text-xs font-mono break-all">
+                            ID: {foodId}
+                        </div>
+                    )}
+                </div>
+
+                <div className="card border p-4">
+                    <h3 className="font-bold mb-2">Step 3: Create Relation</h3>
+                    <button
+                        className="btn btn-primary w-full"
+                        onClick={createLikesRelation}
+                        disabled={!personId || !foodId}
+                    >
+                        Create "Likes" Relation
+                    </button>
+                </div>
+            </div>
+
+            <div className="mt-4">
+                <button className="btn btn-accent w-full" onClick={runFullDemo}>
+                    Run Full Demo
+                </button>
+            </div>
+
+            {/* Publishing workflow */}
+            <div className="divider">Publish to Blockchain</div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button
+                    className="btn btn-secondary"
+                    onClick={handlePublishToIPFS}
+                    disabled={operationsCount === 0}
+                >
+                    1. Publish to IPFS
+                </button>
+
+                <button
+                    className="btn btn-secondary"
+                    onClick={handleGetTransactionData}
+                >
+                    2. Get Transaction Data
+                </button>
+
+                <button
+                    className="btn btn-secondary"
+                    onClick={handleSendTransaction}
+                >
+                    3. Send Transaction
+                </button>
+            </div>
+
+            {/* Operations log */}
+            <div className="divider">Operations Log ({operationsCount})</div>
+            <OperationsLog ops={operations} clearOps={clearOperations} />
+        </div>
+    </div>
+);
+```
+
+### Step 5: Using the Demo Component
+
+To use this component in your application:
+
+```tsx
+// In your app page
+import AliceLikesPizzaDemo from "~/components/AliceLikesPizzaDemo";
+
+const DemoPage = () => {
+    return (
+        <div className="container mx-auto p-4">
+            <h1 className="text-3xl font-bold mb-8">
+                Knowledge Graph Hooks Demo
+            </h1>
+            <AliceLikesPizzaDemo />
+        </div>
+    );
+};
+
+export default DemoPage;
+```
+
+### Key Learnings from this Example
+
+This tutorial demonstrates several important concepts:
+
+1. **Entity Type Tagging**: Uses the `type` attribute to explicitly tag entities as "Person" or "Food"
+2. **Attribute Naming**: Uses the `name` property to provide human-readable names for attributes
+3. **Operation Tracking**: Uses both the hooks API (`addTriple`, `addRelation`) and manual tracking to ensure operations are properly recorded
+4. **Publishing Workflow**: Shows the three-step process of IPFS → Transaction Data → Blockchain
+5. **Error Handling**: Implements comprehensive error handling with user-friendly status messages
+6. **UI/UX Considerations**: Provides clear step-by-step interface with appropriate button disabling
+
+By following this pattern, you can build more complex knowledge graph applications that maintain clean, well-structured data with explicit entity types and attribute names.
 
 ## Configuration System
 
