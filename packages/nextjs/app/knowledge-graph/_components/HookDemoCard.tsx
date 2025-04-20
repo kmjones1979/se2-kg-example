@@ -43,9 +43,6 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
   const [expandRelationsSection, setExpandRelationsSection] = useState(true);
   const [expandOperationsLog, setExpandOperationsLog] = useState(true);
 
-  // New state variable for toggling between formatted view and JSON view
-  const [showRawJson, setShowRawJson] = useState(false);
-
   // Add this new state variable near the other state variables
   const [useBackupOperations, setUseBackupOperations] = useState(false);
 
@@ -1325,18 +1322,6 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
             <div className="card-body pt-0">
               <div className="flex justify-between items-center mb-2">
                 <div className="flex items-center">
-                  <div className="form-control mr-4">
-                    <label className="label cursor-pointer">
-                      <span className="label-text mr-2">Show Raw JSON</span>
-                      <input
-                        type="checkbox"
-                        className="toggle toggle-primary toggle-sm"
-                        checked={showRawJson}
-                        onChange={() => setShowRawJson(!showRawJson)}
-                      />
-                    </label>
-                  </div>
-
                   {useBackupOperations && <div className="badge badge-warning">Using Backup Data</div>}
                 </div>
 
@@ -1354,7 +1339,6 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
                   operationsRef.current = [];
                   setUseBackupOperations(false);
                 }}
-                showRawJson={showRawJson}
               />
             </div>
           )}

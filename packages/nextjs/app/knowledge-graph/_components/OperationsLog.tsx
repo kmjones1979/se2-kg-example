@@ -3,19 +3,25 @@ import React, { useEffect, useState } from "react";
 interface OperationsLogProps {
   ops: any[];
   clearOps: () => void;
-  showRawJson?: boolean;
 }
 
-export const OperationsLog = ({ ops, clearOps, showRawJson = false }: OperationsLogProps) => {
+export const OperationsLog = ({ ops, clearOps }: OperationsLogProps) => {
   console.log("OperationsLog rendering with ops:", ops);
 
   // For debugging - show the first operation details
   if (ops?.length > 0) {
     console.log("First operation:", ops[0]);
     console.log("First operation data:", ops[0]?.data);
+
+    // Add extra debug logging for the SET_TRIPLE case
+    if (ops[0]?.type === "SET_TRIPLE" || ops[0]?.op === "SET_TRIPLE") {
+      console.log("Found SET_TRIPLE format:", ops[0]);
+      console.log("Triple data:", ops[0]?.triple);
+    }
   }
 
-  // Add states for ultra raw mode and debug mode
+  // Add states for JSON view, ultra raw mode and debug mode
+  const [isJsonView, setIsJsonView] = useState(false);
   const [showUltraRaw, setShowUltraRaw] = useState(false);
   const [showDebugInfo, setShowDebugInfo] = useState(false);
 
@@ -171,20 +177,23 @@ export const OperationsLog = ({ ops, clearOps, showRawJson = false }: Operations
       try {
         // Start with the core operation data
         const result = {
-          type: op.type,
-          action: op.action,
+          type: op.type || op.op,
+          action: op.action || (op.type === "SET_TRIPLE" || op.op === "SET_TRIPLE" ? "add" : "unknown"),
           timestamp: op.timestamp ? formatTimestamp(op.timestamp) : "unknown",
           id: op.id,
         };
 
-        // Handle SET_TRIPLE operation data format
-        if (op.type === "triple" && op.action === "add" && op.data) {
-          // Support different data structures - some operations have data.triple, others have data directly
-          // Also handle the case where data might be nested differently
-          const tripData = op.data.triple || op.data;
+        // Handle SET_TRIPLE operation format - support both data.triple and direct triple field
+        if ((op.type === "triple" && op.action === "add") || op.type === "SET_TRIPLE" || op.op === "SET_TRIPLE") {
+          // Support different data structures - some operations have data.triple, others have triple directly
+          const tripData = op.data?.triple || op.triple || op.data;
 
           // Extract entity ID - check all possible locations
-          let entityId = tripData.entityId || op.data.entityId || (tripData.triple ? tripData.triple.entityId : null);
+          let entityId =
+            tripData?.entityId ||
+            op.data?.entityId ||
+            tripData?.entity ||
+            (tripData?.triple ? tripData.triple.entityId : null);
 
           // Try to extract from ID format if still null
           if (!entityId && op.id) {
@@ -196,7 +205,10 @@ export const OperationsLog = ({ ops, clearOps, showRawJson = false }: Operations
 
           // Extract attribute ID - check all possible locations
           let attributeId =
-            tripData.attributeId || op.data.attributeId || (tripData.triple ? tripData.triple.attributeId : null);
+            tripData?.attributeId ||
+            op.data?.attributeId ||
+            tripData?.attribute ||
+            (tripData?.triple ? tripData.triple.attributeId : null);
 
           // Try to extract from ID format if still null
           if (!attributeId && op.id) {
@@ -207,18 +219,20 @@ export const OperationsLog = ({ ops, clearOps, showRawJson = false }: Operations
           }
 
           // Extract value data - check all possible locations
-          const valueData = tripData.value || op.data.value || (tripData.triple ? tripData.triple.value : null);
+          const valueData = tripData?.value || op.data?.value || (tripData?.triple ? tripData.triple.value : null);
 
           // Improved attribute name extraction
           const attributeName =
-            tripData.name || (valueData?.value === "Alice" ? "name" : tripData.attributeName || "unknown");
+            tripData?.name || (valueData?.value === "Alice" ? "name" : tripData?.attributeName || "unknown");
 
           // Improved entity type detection
-          const entityType = tripData.entityType || (valueData?.value === "Alice" ? "Person" : "Entity");
+          const entityType =
+            tripData?.entityType ||
+            (valueData?.value === "person" || valueData?.value === "Alice" ? "Person" : "Entity");
 
           return {
             ...result,
-            operationType: op.data.type || "SET_TRIPLE",
+            operationType: op.data?.type || op.type || "SET_TRIPLE",
             entityId: entityId,
             attributeId: attributeId,
             entityType: entityType,
@@ -239,7 +253,7 @@ export const OperationsLog = ({ ops, clearOps, showRawJson = false }: Operations
 
           return {
             ...result,
-            operationType: op.data.type || "SET_RELATION",
+            operationType: op.data?.type || relationData.type || "SET_RELATION",
             fromEntity: relationData.fromEntity || "unknown",
             fromId: relationData.fromId || relationData.from_id,
             toEntity: relationData.toEntity || "unknown",
@@ -268,7 +282,18 @@ export const OperationsLog = ({ ops, clearOps, showRawJson = false }: Operations
       <div className="flex justify-between items-center mb-2">
         <h3 className="text-sm font-semibold">Operations ({ops?.length || 0})</h3>
         <div className="flex space-x-2">
-          {showRawJson && (
+          <div className="flex items-center">
+            <label className="cursor-pointer label">
+              <span className="label-text mr-1 text-xs">Show JSON</span>
+              <input
+                type="checkbox"
+                className="toggle toggle-xs toggle-primary"
+                checked={isJsonView}
+                onChange={() => setIsJsonView(!isJsonView)}
+              />
+            </label>
+          </div>
+          {isJsonView && (
             <>
               <label className="cursor-pointer label">
                 <span className="label-text mr-1 text-xs">Ultra Raw</span>
@@ -320,7 +345,7 @@ export const OperationsLog = ({ ops, clearOps, showRawJson = false }: Operations
 
       <div className="bg-base-300 p-4 rounded-lg overflow-auto max-h-72">
         {ops?.length > 0 ? (
-          showRawJson ? (
+          isJsonView ? (
             // Show raw JSON format
             <div>
               <div className="text-xs text-base-content/70 mb-2">Showing raw operation data:</div>
@@ -348,23 +373,30 @@ export const OperationsLog = ({ ops, clearOps, showRawJson = false }: Operations
 
                   <div className="mt-2 text-xs">
                     {/* Triple Operation (Entity or Attribute) */}
-                    {op.type === "triple" && (
+                    {(op.type === "triple" || op.type === "SET_TRIPLE") && (
                       <div>
                         <div>
                           <span className="font-semibold">Entity:</span>{" "}
-                          {truncateId(op.data?.triple?.entityId || op.data?.entityId)}
+                          {truncateId(
+                            op.data?.triple?.entityId || op.data?.entityId || op.triple?.entity || op.triple?.entityId,
+                          )}
                         </div>
                         <div>
                           <span className="font-semibold">Attribute:</span>{" "}
-                          {truncateId(op.data?.triple?.attributeId || op.data?.attributeId)}
+                          {truncateId(
+                            op.data?.triple?.attributeId ||
+                              op.data?.attributeId ||
+                              op.triple?.attribute ||
+                              op.triple?.attributeId,
+                          )}
                         </div>
-                        {(op.data?.triple?.value || op.data?.value) && (
+                        {(op.data?.triple?.value || op.data?.value || op.triple?.value) && (
                           <div>
                             <span className="font-semibold">Value:</span>{" "}
-                            {op.data?.triple?.value?.value || op.data?.value?.value}
+                            {op.data?.triple?.value?.value || op.data?.value?.value || op.triple?.value?.value}
                             <span className="opacity-70">
                               {" "}
-                              ({op.data?.triple?.value?.type || op.data?.value?.type})
+                              ({op.data?.triple?.value?.type || op.data?.value?.type || op.triple?.value?.type})
                             </span>
                           </div>
                         )}
