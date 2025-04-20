@@ -760,13 +760,13 @@ First, create a new component that will incorporate all the necessary hooks:
 ```tsx
 // AliceLikesPizzaDemo.tsx
 import { useState } from "react";
+import { OperationsLog } from "~~/app/knowledge-graph/_components/OperationsLog";
 import {
     useGraphIds,
     useGraphOperations,
     useGraphPublishing,
     useOperationsTracking,
-} from "~/app/knowledge-graph/_hooks";
-import { OperationsLog } from "~/app/knowledge-graph/_components/OperationsLog";
+} from "~~/app/knowledge-graph/_hooks";
 
 const AliceLikesPizzaDemo = () => {
     // State for entity IDs
@@ -780,7 +780,7 @@ const AliceLikesPizzaDemo = () => {
     const { generateEntityId, generateAttributeId, generateRelationTypeId } =
         useGraphIds();
     const { addTriple, addRelation } = useGraphOperations();
-    const { operationsCount, operations, trackOperation, clearOperations } =
+    const { operations, trackOperation, clearOperations } =
         useOperationsTracking();
     const {
         operationName,
@@ -815,35 +815,34 @@ export default AliceLikesPizzaDemo;
 Next, add functions to create the person and food entities with proper type information:
 
 ```tsx
-// Add to the AlicePizzaExample component
-
 // Create Person Entity (Alice)
 const createPersonEntity = () => {
     try {
-        // Generate IDs using the useGraphIds hook
+        // Generate IDs
         const entityId = generateEntityId();
         setPersonId(entityId);
 
-        // Create name attribute (with proper typing)
-        const nameAttrId = generateAttributeId();
-
-        // First, create a triple that defines this as a Person type
+        // Create type triple first (Person type)
         const typeTripleData = {
             type: "SET_TRIPLE",
             triple: {
                 entity: entityId,
-                attribute: "type",
+                attribute: "type", // Reserved attribute name
                 value: {
                     type: "TEXT",
                     value: "Person",
                 },
+                // IMPORTANT: Don't include 'name' field inside the triple
             },
         };
 
         // Track the type operation
         trackOperation(typeTripleData);
 
-        // Then create the name triple
+        // Now create name attribute
+        const nameAttrId = generateAttributeId();
+
+        // Create name triple without 'name' field in the triple itself
         const nameTripleData = {
             type: "SET_TRIPLE",
             triple: {
@@ -853,12 +852,18 @@ const createPersonEntity = () => {
                     type: "TEXT",
                     value: "Alice",
                 },
-                name: "name", // Add explicit name for better display
+                // No name field here - it causes SDK errors
+            },
+            // Use a separate metadata object if you need to track attribute names
+            metadata: {
+                attributeName: "name",
             },
         };
 
-        // Track the name operation and add it through the hook
+        // Track the name operation
         trackOperation(nameTripleData);
+
+        // Add through the hooks API
         addTriple(entityId, nameAttrId, { type: "TEXT", value: "Alice" });
 
         setStatus(`Created person: Alice (${entityId})`);
@@ -876,7 +881,7 @@ const createPersonEntity = () => {
 // Create Food Entity (Pizza)
 const createFoodEntity = () => {
     try {
-        // Generate IDs using the useGraphIds hook
+        // Generate IDs
         const entityId = generateEntityId();
         setFoodId(entityId);
 
@@ -885,11 +890,12 @@ const createFoodEntity = () => {
             type: "SET_TRIPLE",
             triple: {
                 entity: entityId,
-                attribute: "type",
+                attribute: "type", // Reserved attribute
                 value: {
                     type: "TEXT",
                     value: "Food",
                 },
+                // No name field here
             },
         };
 
@@ -907,15 +913,18 @@ const createFoodEntity = () => {
                     type: "TEXT",
                     value: "Pizza",
                 },
-                name: "name", // Add explicit name for better display
+                // No name field here
+            },
+            metadata: {
+                attributeName: "name",
             },
         };
 
-        // Track the name operation and add it through the hook
+        // Track and add the name operation
         trackOperation(nameTripleData);
         addTriple(entityId, nameAttrId, { type: "TEXT", value: "Pizza" });
 
-        // Add an 'origin' attribute
+        // Add origin attribute
         const originAttrId = generateAttributeId();
         const originTripleData = {
             type: "SET_TRIPLE",
@@ -926,7 +935,10 @@ const createFoodEntity = () => {
                     type: "TEXT",
                     value: "Italian",
                 },
-                name: "origin", // Add explicit name for better display
+                // No name field here
+            },
+            metadata: {
+                attributeName: "origin",
             },
         };
 
@@ -952,8 +964,6 @@ const createFoodEntity = () => {
 Now, add the function to create a "likes" relation between Alice and Pizza:
 
 ```tsx
-// Add within your component
-
 // Create the "Likes" relation between Alice and Pizza
 const createLikesRelation = () => {
     if (!personId || !foodId) {
@@ -962,7 +972,7 @@ const createLikesRelation = () => {
     }
 
     try {
-        // Generate a relation type ID using the useGraphIds hook
+        // Generate a relation type ID
         const likesRelationTypeId = generateRelationTypeId();
 
         // Create the relation data
@@ -973,12 +983,16 @@ const createLikesRelation = () => {
                 relationType: likesRelationTypeId,
                 to: foodId,
             },
+            // Store relation name in metadata instead of the relation object
+            metadata: {
+                relationName: "likes",
+            },
         };
 
         // Track the relation operation
         trackOperation(relationData);
 
-        // Add through the hook
+        // Add through the hooks API
         addRelation(personId, likesRelationTypeId, foodId);
 
         setStatus(`Created relation: Alice likes Pizza`);
@@ -996,14 +1010,12 @@ const createLikesRelation = () => {
 
 ### Step 3: Implement Publishing Functions
 
-Add functions to handle the publishing workflow:
+Next, let's implement the publishing functions, taking care to handle only SDK-compatible data:
 
 ```tsx
-// Add within your component
-
 // Publish operations to IPFS
 const handlePublishToIPFS = async () => {
-    if (operationsCount === 0) {
+    if (operations.length === 0) {
         setStatus("No operations to publish");
         return;
     }
@@ -1013,7 +1025,9 @@ const handlePublishToIPFS = async () => {
 
     try {
         setStatus("Publishing to IPFS...");
-        const ipfsCid = await publishToIPFS(operations);
+        // IMPORTANT: Get only the data field from operations, not the metadata
+        const rawOps = operations.map((op) => op.data);
+        const ipfsCid = await publishToIPFS(rawOps);
 
         if (ipfsCid) {
             setStatus(`Published to IPFS: ${ipfsCid}`);
@@ -1026,6 +1040,7 @@ const handlePublishToIPFS = async () => {
                 error instanceof Error ? error.message : String(error)
             }`
         );
+        console.error("IPFS error:", error);
     }
 };
 
@@ -1092,8 +1107,6 @@ const runFullDemo = () => {
 Complete the component's UI structure:
 
 ```tsx
-// Replace the UI placeholder in the return statement
-
 return (
     <div className="card bg-base-100 shadow-xl">
         <div className="card-body">
@@ -1178,7 +1191,7 @@ return (
                 <button
                     className="btn btn-secondary"
                     onClick={handlePublishToIPFS}
-                    disabled={operationsCount === 0}
+                    disabled={operations.length === 0}
                 >
                     1. Publish to IPFS
                 </button>
@@ -1199,7 +1212,7 @@ return (
             </div>
 
             {/* Operations log */}
-            <div className="divider">Operations Log ({operationsCount})</div>
+            <div className="divider">Operations Log ({operations.length})</div>
             <OperationsLog ops={operations} clearOps={clearOperations} />
         </div>
     </div>
@@ -1208,11 +1221,13 @@ return (
 
 ### Step 5: Using the Demo Component
 
-To use this component in your application:
+Create a page to integrate the demo component:
 
 ```tsx
-// In your app page
-import AliceLikesPizzaDemo from "~/components/AliceLikesPizzaDemo";
+// In app/alice-demo/page.tsx
+"use client";
+
+import AliceLikesPizzaDemo from "./_components/AliceLikesPizzaDemo";
 
 const DemoPage = () => {
     return (
@@ -1228,18 +1243,29 @@ const DemoPage = () => {
 export default DemoPage;
 ```
 
-### Key Learnings from this Example
+### Key Implementation Details
 
-This tutorial demonstrates several important concepts:
+1. **SDK Compatibility**:
 
-1. **Entity Type Tagging**: Uses the `type` attribute to explicitly tag entities as "Person" or "Food"
-2. **Attribute Naming**: Uses the `name` property to provide human-readable names for attributes
-3. **Operation Tracking**: Uses both the hooks API (`addTriple`, `addRelation`) and manual tracking to ensure operations are properly recorded
-4. **Publishing Workflow**: Shows the three-step process of IPFS → Transaction Data → Blockchain
-5. **Error Handling**: Implements comprehensive error handling with user-friendly status messages
-6. **UI/UX Considerations**: Provides clear step-by-step interface with appropriate button disabling
+    - We keep the triple objects clean with only `entity`, `attribute`, and `value` fields
+    - We store metadata like attribute names separately in a `metadata` object
+    - When publishing to IPFS, we extract only the SDK-compatible `data` field
 
-By following this pattern, you can build more complex knowledge graph applications that maintain clean, well-structured data with explicit entity types and attribute names.
+2. **Proper ID Generation**:
+
+    - All IDs are generated using the appropriate functions from `useGraphIds`
+    - Entity IDs, attribute IDs, and relation type IDs are tracked for reuse
+
+3. **Error Handling**:
+
+    - Each function includes comprehensive error handling
+    - Status messages provide feedback to the user
+
+4. **Publishing Workflow**:
+    - The three-step process (IPFS → Transaction Data → Blockchain) is clearly defined
+    - Each step depends on the successful completion of the previous one
+
+Follow this pattern to create your own knowledge graph applications!
 
 ## Knowledge Graph Concepts
 
