@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import hypergraphConfig, { NetworkType, getActualApiEndpoint } from "~~/hypergraph.config";
 
 // Simpler API route that proxies to The Graph API
 export async function POST(req: NextRequest) {
@@ -12,9 +13,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
     }
 
-    // Determine API endpoint
-    const baseUrl =
-      network === "TESTNET" ? "https://api-testnet.grc-20.thegraph.com" : "https://hypergraph.up.railway.app";
+    // Get API endpoint from config
+    const baseUrl = getActualApiEndpoint(network as NetworkType);
 
     const url = `${baseUrl}/space/${spaceId}/edit/calldata`;
     console.log("Proxying to:", url);

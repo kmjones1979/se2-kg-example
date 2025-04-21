@@ -39,6 +39,7 @@ interface TraditionalInterfaceProps {
   getCallData: () => void;
   sendTransaction: () => void;
   getRawOperations: () => any[];
+  publishToChain?: (operations: any[]) => Promise<string | `0x${string}` | null>;
 }
 
 /**
@@ -73,6 +74,7 @@ export const TraditionalInterface = ({
   getCallData,
   sendTransaction,
   getRawOperations,
+  publishToChain,
 }: TraditionalInterfaceProps) => {
   return (
     <>
@@ -121,7 +123,8 @@ export const TraditionalInterface = ({
           publishToIPFS={publishToIPFS}
           getCallData={getCallData}
           sendTransaction={sendTransaction}
-          ops={getRawOperations()}
+          publishToChain={publishToChain}
+          ops={directOperations}
           operationName={operationName}
           spaceId={spaceId}
         />

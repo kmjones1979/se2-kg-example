@@ -1,9 +1,10 @@
 "use client";
 
-import { useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { ConnectedAddressCard, HookDemoCard, PageHeader, StatusFooter, TraditionalInterface } from "./_components";
 import { useGraphIds, useGraphOperations, useGraphPublishing } from "./_hooks";
 import { useAccount, useWaitForTransactionReceipt } from "wagmi";
+import { getGeoPrivateKey, shouldUseSmartAccount } from "~~/hypergraph.config";
 
 // Define a type for operations
 type Operation = {
@@ -57,18 +58,13 @@ const KnowledgeGraph = () => {
   } = useGraphOperations();
 
   const {
-    spaceId,
+    state: { spaceId, operationName, ipfsCid, txData, txHash, status: publishingStatus, step: activeStep },
     setSpaceId,
-    operationName,
     setOperationName,
-    ipfsCid,
-    txData,
-    txHash,
-    status: publishingStatus,
-    step: activeStep,
     publishToIPFS,
     getCallData,
     sendTransaction,
+    publishToChain,
   } = useGraphPublishing();
 
   // Transaction receipt for UI display
@@ -154,7 +150,73 @@ const KnowledgeGraph = () => {
 
   // Handle publishing workflow
   const handlePublishToIPFS = async () => {
-    await publishToIPFS(getRawOperations(), connectedAddress);
+    // First, check which operations array to use
+    const rawOps = getRawOperations();
+    console.log("Operations status:", {
+      directOperationsLength: directOperations.length,
+      rawOperationsLength: rawOps.length,
+      opsCount: operationsCount,
+      localOpsCount: localOpsCount,
+      refOpsCount: opsCountRef.current,
+    });
+
+    // If rawOps is empty but we have directOperations, use those instead
+    const operationsToPublish =
+      rawOps.length > 0
+        ? rawOps
+        : directOperations.map(op => {
+            // Convert to the format expected by publishToIPFS
+            if (op.__typename === "Triple" || op.op === "SetTriple") {
+              return {
+                type: "SetTriple",
+                entity_id: op.entityId,
+                attribute_id: op.attributeId,
+                value: op.value,
+              };
+            } else if (op.__typename === "Relation" || op.op === "SetRelation") {
+              return {
+                type: "SetRelation",
+                from_id: op.fromId,
+                relation_type_id: op.relationTypeId,
+                to_id: op.toId,
+                id: op.id || undefined,
+              };
+            }
+            return op; // Return as-is if it's already in the right format
+          });
+
+    console.log("Publishing operations:", operationsToPublish.length);
+
+    if (operationsToPublish.length === 0) {
+      setStatus("No operations to publish");
+      return;
+    }
+
+    await publishToIPFS(operationsToPublish, connectedAddress);
+  };
+
+  // Handle publish to chain function for the TraditionalInterface
+  const handlePublishToChain = async (operations: any[]) => {
+    if (!operations || operations.length === 0) {
+      setStatus("No operations to publish");
+      return null;
+    }
+
+    // Get smart account configuration from hypergraph config
+    const useSmartAccount = shouldUseSmartAccount();
+    const geoPrivateKey = getGeoPrivateKey();
+
+    console.log(
+      `Smart account configuration: useSmartAccount=${useSmartAccount}, privateKey=${geoPrivateKey ? "provided" : "not provided"}`,
+    );
+
+    try {
+      return await publishToChain(operations, connectedAddress, useSmartAccount, geoPrivateKey);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setStatus(`Error publishing to chain: ${errorMessage}`);
+      return null;
+    }
   };
 
   // Combined status from both hooks for UI display
@@ -162,6 +224,7 @@ const KnowledgeGraph = () => {
 
   // Debug function
   const debugOperations = () => {
+    console.log("===================== DEBUG OPERATIONS =====================");
     console.log("Operations object:", operations);
     console.log("Operations count:", operationsCount);
     console.log("Operations length:", operations.length);
@@ -172,8 +235,27 @@ const KnowledgeGraph = () => {
     console.log("Raw operations:", getRawOperations());
     console.log("Raw operations length:", getRawOperations().length);
     console.log("Hook demo operations count:", hookDemoOpsCount);
+
+    // Check if our fix from earlier could be used
+    if (getRawOperations().length === 0 && directOperations.length > 0) {
+      console.log("MISMATCH DETECTED: getRawOperations() returns empty array but directOperations is not empty");
+      console.log("You should be able to publish using the directOperations array");
+
+      // Log the first few direct operations for debugging
+      if (directOperations.length > 0) {
+        console.log("Sample directOperations:", directOperations.slice(0, 3));
+      }
+    }
+
+    console.log("===================== END DEBUG =====================");
     forceUpdate();
   };
+
+  // Call debugOperations on component mount
+  useEffect(() => {
+    // Debug on mount to see what's happening
+    debugOperations();
+  }, []);
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -225,6 +307,7 @@ const KnowledgeGraph = () => {
               getCallData={getCallData}
               sendTransaction={sendTransaction}
               getRawOperations={getRawOperations}
+              publishToChain={handlePublishToChain}
             />
           )}
         </div>

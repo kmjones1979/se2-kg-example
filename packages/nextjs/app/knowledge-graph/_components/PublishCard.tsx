@@ -7,6 +7,7 @@ interface PublishCardProps {
   publishToIPFS: () => void;
   getCallData: () => void;
   sendTransaction: () => void;
+  publishToChain?: (operations: any[]) => Promise<string | `0x${string}` | null>;
   ops: any[];
   operationName: string;
   spaceId: string;
@@ -21,6 +22,7 @@ export const PublishCard = ({
   publishToIPFS,
   getCallData,
   sendTransaction,
+  publishToChain,
   ops,
   operationName,
   spaceId,
@@ -29,6 +31,36 @@ export const PublishCard = ({
     <div className="card bg-base-100 shadow-xl mb-8">
       <div className="card-body">
         <h2 className="card-title mb-4">Publish and Execute</h2>
+
+        {/* Smart account one-click publish button */}
+        {publishToChain && (
+          <div className="mb-6">
+            <button
+              className="btn btn-success w-full"
+              onClick={async () => {
+                if (ops.length === 0 || !operationName) return;
+                await publishToChain(ops);
+              }}
+              disabled={ops.length === 0 || !operationName}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              Publish Operations with Smart Account
+            </button>
+            <div className="text-sm mt-2 opacity-70 text-center">
+              This will automatically publish to IPFS, get transaction data, and send the transaction in one step using
+              a GEO smart account
+            </div>
+          </div>
+        )}
+
+        <div className="divider">Or publish step by step</div>
+
         {/* Action Steps */}
         <div className="flex flex-col gap-4">
           {/* Step 1 */}
@@ -58,6 +90,75 @@ export const PublishCard = ({
                 </svg>
                 Publish to IPFS
               </button>
+
+              {/* Add status message explaining why button is disabled */}
+              {(ops.length === 0 || !operationName) && (
+                <div className="mt-2 text-sm text-error">
+                  {!operationName && ops.length === 0 && (
+                    <div className="alert alert-warning">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="stroke-current shrink-0 h-6 w-6"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                        />
+                      </svg>
+                      <span>Both operation name and operations are missing</span>
+                    </div>
+                  )}
+
+                  {!operationName && ops.length > 0 && (
+                    <div className="alert alert-warning">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="stroke-current shrink-0 h-6 w-6"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                        />
+                      </svg>
+                      <span>Please enter an operation name to publish</span>
+                    </div>
+                  )}
+
+                  {operationName && ops.length === 0 && (
+                    <div className="alert alert-warning">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="stroke-current shrink-0 h-6 w-6"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                        />
+                      </svg>
+                      <span>No operations to publish. Please add some operations first.</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Display operation count when available */}
+              {ops.length > 0 && (
+                <div className="mt-2 text-sm">
+                  <span className="badge badge-info">{ops.length} operations ready to publish</span>
+                </div>
+              )}
             </div>
           </div>
 

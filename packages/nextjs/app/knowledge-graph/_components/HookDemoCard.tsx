@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useGraphEntities, useGraphIds, useGraphOperations, useGraphPublishing } from "../_hooks";
 import { OperationsLog } from "./OperationsLog";
+import { getGeoPrivateKey, shouldUseSmartAccount } from "~~/hypergraph.config";
 
 /**
  * Props for HookDemoCard component
@@ -63,19 +64,11 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
 
   const { generateEntityId, generateAttributeId, generateRelationTypeId, generateRelationId } = useGraphIds();
 
-  // Local function for triple ID generation
-  const generateTripleId = () => {
-    return `triple-${Math.random().toString(36).substring(2, 10)}`;
-  };
-
   const {
-    operationName,
+    state: { operationName, ipfsCid, txHash, txData, spaceId },
     setOperationName,
     publishToIPFS,
     publishToChain,
-    ipfsCid,
-    txHash,
-    spaceId,
     setSpaceId,
     getCallData,
     sendTransaction,
@@ -213,15 +206,89 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
 
   // Publish all operations to IPFS and blockchain
   const handlePublish = async () => {
+    console.log("========== HANDLE PUBLISH START ==========");
+    console.log(`Publishing with operation name: ${operationName}`);
+    console.log(`Current operations count: ${operationsCount}`);
+    console.log(`Operations backup count: ${operationsRef.current.length}`);
+
     if (!operationName) {
+      console.error("No operation name provided");
       setStatus("Please enter an operation name");
+      console.log("========== HANDLE PUBLISH END (NO OPERATION NAME) ==========");
       return;
     }
 
-    const txHash = await publishToChain(getRawOperations());
-    if (txHash) {
-      clearOperations();
+    // Check both the operations array and the backup operations ref
+    if (operationsCount === 0 && operationsRef.current.length === 0) {
+      console.error("No operations to publish");
+      setStatus("No operations to publish");
+      console.log("========== HANDLE PUBLISH END (NO OPERATIONS) ==========");
+      return;
     }
+
+    try {
+      console.log("Getting raw operations...");
+      // Always use the backup operations if the main operations array is empty
+      const rawOps = operationsCount > 0 ? getRawOperations() : operationsRef.current.map(op => op.data);
+      console.log(`Using ${operationsCount > 0 ? "main" : "backup"} operations (${rawOps.length} total)`);
+
+      if (rawOps.length === 0) {
+        console.error("No operations to publish after getting raw operations");
+        setStatus("No operations to publish");
+        console.log("========== HANDLE PUBLISH END (NO RAW OPERATIONS) ==========");
+        return;
+      }
+
+      // Log a sample of the operations
+      console.log(
+        "Sample of operations to publish:",
+        rawOps.slice(0, 3).map(op => ({
+          type: op.type || "unknown",
+          action: op.action || "unknown",
+          id: op.id?.substring(0, 8) || "unknown",
+        })),
+      );
+
+      // Step 1: Publish to chain (which includes IPFS publish + call data fetch + transaction)
+      console.log("Calling publishToChain...");
+      setStatus("Publishing to blockchain...");
+
+      // Get smart account configuration from the hypergraph config
+      const useSmartAccount = shouldUseSmartAccount();
+      const geoPrivateKey = getGeoPrivateKey();
+
+      console.log(
+        `Smart account configuration: useSmartAccount=${useSmartAccount}, privateKey=${geoPrivateKey ? "provided" : "not provided"}`,
+      );
+
+      // Call publishToChain with smart account parameters
+      const txHash = await publishToChain(rawOps, undefined, useSmartAccount, geoPrivateKey);
+
+      console.log(`publishToChain result: ${txHash || "failed"}`);
+
+      if (txHash) {
+        // Success - transaction was sent
+        console.log(`Transaction sent successfully! Hash: ${txHash}`);
+        setStatus(`Transaction sent! Hash: ${txHash}`);
+
+        // Clear operations on success
+        console.log("Clearing operations after successful publish");
+        clearOperations();
+        // Also clear backup operations
+        operationsRef.current = [];
+        console.log("Operations cleared");
+      } else {
+        // Something failed
+        console.error("Failed to publish to chain");
+        setStatus("Failed to publish to blockchain");
+      }
+    } catch (error) {
+      console.error("Error publishing to chain:", error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      setStatus(`Error publishing: ${errorMsg}`);
+    }
+
+    console.log("========== HANDLE PUBLISH END ==========");
   };
 
   // Improve the helper function to manually track operations
@@ -1026,8 +1093,10 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <h4 className="font-bold text-md mb-1 text-primary">Nodes (Entities)</h4>
-                <p className="text-sm mb-2">
+                <h4 className="font-bold text-lg p-2 rounded-md inline-block bg-base-300 text-base-content shadow-sm">
+                  Nodes (Entities)
+                </h4>
+                <p className="text-sm mb-2 mt-2">
                   Nodes are the primary objects in your knowledge graph. They represent things like:
                 </p>
                 <ul className="list-disc list-inside text-sm ml-2 space-y-1">
@@ -1044,22 +1113,31 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
               </div>
 
               <div>
-                <h4 className="font-bold text-md mb-1 text-secondary">Edges (Relations)</h4>
-                <p className="text-sm mb-2">
+                <h4 className="font-bold text-lg p-2 rounded-md inline-block bg-base-300 text-base-content shadow-sm">
+                  Edges (Relations)
+                </h4>
+                <p className="text-sm mb-2 mt-2">
                   Edges connect nodes to each other, defining how entities relate. Examples:
                 </p>
                 <ul className="list-disc list-inside text-sm ml-2 space-y-1">
                   <li>
-                    Person <span className="text-secondary font-bold">→ WORKS_AT →</span> Company
+                    Person{" "}
+                    <span className="px-2 py-1 rounded font-bold bg-base-300 text-base-content">→ WORKS_AT →</span>{" "}
+                    Company
                   </li>
                   <li>
-                    Person <span className="text-secondary font-bold">→ KNOWS →</span> Person
+                    Person <span className="px-2 py-1 rounded font-bold bg-base-300 text-base-content">→ KNOWS →</span>{" "}
+                    Person
                   </li>
                   <li>
-                    Book <span className="text-secondary font-bold">→ AUTHORED_BY →</span> Person
+                    Book{" "}
+                    <span className="px-2 py-1 rounded font-bold bg-base-300 text-base-content">→ AUTHORED_BY →</span>{" "}
+                    Person
                   </li>
                   <li>
-                    City <span className="text-secondary font-bold">→ LOCATED_IN →</span> Country
+                    City{" "}
+                    <span className="px-2 py-1 rounded font-bold bg-base-300 text-base-content">→ LOCATED_IN →</span>{" "}
+                    Country
                   </li>
                 </ul>
                 <p className="text-sm mt-2">
@@ -1283,6 +1361,20 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
                       <div className="font-mono text-xs mt-1">
                         {personName} (Person) → {relationName} → {foodName} (Food with properties)
                       </div>
+                      <div className="mt-2 text-sm">
+                        <strong>Next steps:</strong>
+                        <ol className="list-decimal list-inside ml-2">
+                          <li>
+                            Scroll down to the <strong>Publishing</strong> section
+                          </li>
+                          <li>
+                            Enter an <strong>Operation Name</strong> like "{personName}'s Food Preferences"
+                          </li>
+                          <li>
+                            Click <strong>Publish All Operations</strong> to save to the blockchain
+                          </li>
+                        </ol>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1348,6 +1440,7 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
         {/* REMOVED CREATE PERSON ENTITY SECTION */}
 
         {/* Relations Section - Expandable */}
+        {/* REMOVING THIS ENTIRE SECTION
         <div className="card bg-base-100 border border-base-300 shadow-sm mb-4">
           <div
             className="card-title p-4 cursor-pointer flex justify-between items-center"
@@ -1444,6 +1537,7 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
             </div>
           )}
         </div>
+        */}
 
         {/* Publishing Section - Expandable */}
         <div className="card bg-base-100 border border-base-300 shadow-sm mb-4">
@@ -1500,15 +1594,74 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
                 <button
                   className="btn btn-secondary"
                   onClick={handlePublish}
-                  disabled={operationsCount === 0 || !operationName}
+                  disabled={(operationsCount === 0 && operationsRef.current.length === 0) || !operationName}
                 >
                   Publish All Operations
                 </button>
 
-                <button className="btn btn-outline" onClick={clearOperations} disabled={operationsCount === 0}>
+                <button
+                  className="btn btn-outline"
+                  onClick={clearOperations}
+                  disabled={operationsCount === 0 && operationsRef.current.length === 0}
+                >
                   Clear Operations
                 </button>
               </div>
+
+              {/* Explain why button is disabled */}
+              {((operationsCount === 0 && operationsRef.current.length === 0) || !operationName) && (
+                <div className="alert alert-warning mt-4">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="stroke-current shrink-0 h-6 w-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
+                  </svg>
+                  <div>
+                    {!operationName && (
+                      <div>
+                        <strong>Missing Operation Name:</strong> Please enter an operation name above.
+                      </div>
+                    )}
+                    {operationsCount === 0 && operationsRef.current.length === 0 && (
+                      <div>
+                        <strong>No Operations:</strong> Try using the "Run Full Demo" button to create some entities
+                        first.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Show operation count */}
+              {(operationsCount > 0 || operationsRef.current.length > 0) && (
+                <div className="alert alert-info mt-4">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    className="stroke-current shrink-0 w-6 h-6"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    ></path>
+                  </svg>
+                  <div>
+                    <strong>Operations Ready:</strong>{" "}
+                    {operationsCount > 0 ? operationsCount : operationsRef.current.length} operations to publish
+                  </div>
+                </div>
+              )}
 
               {ipfsCid && (
                 <div className="alert alert-info mt-4">
@@ -1538,23 +1691,37 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
                   onClick={async () => {
                     setStatus("Getting transaction data and sending to blockchain...");
                     try {
-                      // First get the transaction data
-                      const callData = await getCallData();
+                      // First check if we already have transaction data
+                      let callData = txData;
+
+                      // If not, get the transaction data
                       if (!callData) {
-                        setStatus("Failed to get transaction data");
-                        return;
+                        console.log("No transaction data available, fetching calldata first...");
+                        callData = await getCallData();
+                        if (!callData) {
+                          setStatus("Failed to get transaction data");
+                          console.error("Failed to get call data before sending transaction");
+                          return;
+                        }
+                        console.log("Successfully retrieved call data:", callData);
+                      } else {
+                        console.log("Using existing transaction data");
                       }
 
                       // Then send the transaction
+                      console.log("Sending transaction with call data");
                       const hash = await sendTransaction();
                       if (hash) {
                         setStatus(`Transaction sent! Hash: ${hash}`);
+                        console.log(`Transaction sent successfully with hash: ${hash}`);
                       } else {
                         setStatus("Failed to send transaction");
+                        console.error("Send transaction returned null");
                       }
                     } catch (error) {
                       const message = error instanceof Error ? error.message : String(error);
                       setStatus(`Error sending transaction: ${message}`);
+                      console.error("Error in send transaction process:", error);
                     }
                   }}
                 >

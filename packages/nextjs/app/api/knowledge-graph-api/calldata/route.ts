@@ -1,116 +1,95 @@
 import { NextRequest, NextResponse } from "next/server";
-import hypergraphConfig, { NetworkType, getCalldataApiUrl, getDefaultSpaceId } from "~~/hypergraph.config";
+import hypergraphConfig, {
+  NetworkType,
+  getActualApiEndpoint,
+  getCalldataApiUrl,
+  getDefaultSpaceId,
+} from "~~/hypergraph.config";
 
 /**
- * API route that proxies requests to The Graph API to avoid CORS issues
- * Based on the official documentation from https://github.com/graphprotocol/grc-20-ts
+ * API route for fetching call data from The Graph's Knowledge Graph API
+ * This proxy helps avoid CORS issues and normalizes the response format
  */
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await req.json();
-    const { spaceId = getDefaultSpaceId(), cid, network = hypergraphConfig.defaultNetwork } = body;
+    const body = await request.json();
+    const { spaceId, cid, network = "MAINNET" } = body;
 
-    console.log("API route received request:", { spaceId, cid, network });
-
-    if (!spaceId || !cid) {
-      return NextResponse.json({ error: "Missing required parameters: spaceId and cid are required" }, { status: 400 });
+    // Validate required fields
+    if (!spaceId) {
+      return NextResponse.json({ error: "Space ID is required" }, { status: 400 });
     }
 
-    // Ensure the CID has the ipfs:// prefix as required by the API
+    if (!cid) {
+      return NextResponse.json({ error: "IPFS CID is required" }, { status: 400 });
+    }
+
+    // Format CID correctly if not already prefixed
     const formattedCid = cid.startsWith("ipfs://") ? cid : `ipfs://${cid}`;
 
-    // Get the API URL from config
-    const apiUrl = getCalldataApiUrl(spaceId, network as NetworkType);
-
+    // Get API URL from config (use actual URL, not proxied, since this is a server-side call)
+    const baseUrl = getActualApiEndpoint(network as NetworkType);
+    const apiUrl = `${baseUrl}/space/${spaceId}/edit/calldata`;
     console.log(`Proxying request to: ${apiUrl}`);
-    console.log("Request body:", JSON.stringify({ cid: formattedCid, network }));
 
-    // Forward the request to The Graph API following the exact structure from documentation
-    try {
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          cid: formattedCid, // Make sure we're using the properly formatted CID with ipfs:// prefix
-          network, // TESTNET or MAINNET
-        }),
+    // Make request to The Graph's API
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        cid: formattedCid,
+        network,
+      }),
+    });
+
+    // Handle API error responses
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("API error:", {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText,
       });
 
-      console.log("External API response status:", response.status);
-      console.log("External API response headers:", Object.fromEntries([...response.headers.entries()]));
-
-      // Try to get the response text first to avoid JSON parsing errors
-      const responseText = await response.text();
-      console.log("External API response text (first 200 chars):", responseText.substring(0, 200));
-
-      // Try to parse as JSON if possible
-      let responseData;
-      try {
-        responseData = JSON.parse(responseText);
-      } catch (parseError) {
-        console.error("Failed to parse response as JSON:", parseError);
-        responseData = { rawText: responseText };
-      }
-
-      // If we received an error response, log it and return it
-      if (!response.ok) {
-        console.error("Error response from The Graph API:", {
-          status: response.status,
-          statusText: response.statusText,
-          data: responseData,
-          url: apiUrl,
-        });
-
-        // If this is a 404, it might be a different API path structure - log this possibility
-        if (response.status === 404) {
-          console.warn("API endpoint not found. Check if the path structure is correct for this API provider.");
-        }
-
-        return NextResponse.json(
-          {
-            error: "Error from The Graph API",
-            details: responseData,
-            status: response.status,
-            url: apiUrl,
-          },
-          { status: response.status },
-        );
-      }
-
-      // Return the successful response containing to and data fields
-      // Expected response format: { to: "0x...", data: "0x..." }
-      if (responseData && responseData.to && responseData.data) {
-        console.log("Successfully received calldata from API");
-        return NextResponse.json(responseData);
-      } else {
-        console.error("API response doesn't contain expected fields:", responseData);
-        return NextResponse.json(
-          {
-            error: "Invalid API response format",
-            details: "Response doesn't contain expected 'to' and 'data' fields",
-            receivedData: responseData,
-          },
-          { status: 502 },
-        );
-      }
-    } catch (fetchError) {
-      console.error("Fetch error:", fetchError);
       return NextResponse.json(
-        {
-          error: "Failed to connect to external API",
-          message: fetchError instanceof Error ? fetchError.message : String(fetchError),
-          url: apiUrl,
-        },
-        { status: 502 },
+        { error: `API error: ${response.status} ${response.statusText}`, details: errorText },
+        { status: response.status },
       );
     }
+
+    // Parse and normalize response data
+    const data = await response.json();
+    console.log("API response:", data);
+
+    // Normalize the response format
+    // We want to return a consistent format: { to: string, data: string }
+    if (data.calldata && data.calldata.to && data.calldata.data) {
+      // Format 1: Return nested structure as is
+      return NextResponse.json(data);
+    } else if (data.to && data.data) {
+      // Format 2: Data already at root level, return as is
+      return NextResponse.json(data);
+    } else {
+      // Try to extract to and data from any other format
+      const to = data.to || data.address || data.contractAddress;
+      const txData = data.data || data.calldata || data.txData;
+
+      if (to && txData) {
+        // Return normalized format
+        return NextResponse.json({ to, data: txData });
+      } else {
+        // Cannot extract required fields
+        console.error("Invalid API response format:", data);
+        return NextResponse.json({ error: "Invalid API response format - missing required fields" }, { status: 500 });
+      }
+    }
   } catch (error) {
-    console.error("Error in calldata API route:", error);
+    console.error("Error in calldata proxy:", error);
     return NextResponse.json(
-      { error: "Internal server error", message: error instanceof Error ? error.message : "Unknown error" },
+      { error: `Internal server error: ${error instanceof Error ? error.message : String(error)}` },
       { status: 500 },
     );
   }

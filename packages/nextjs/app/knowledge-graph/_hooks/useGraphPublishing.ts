@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Graph, Ipfs, getSmartAccountWalletClient } from "@graphprotocol/grc-20";
 import { useTransactor } from "~~/hooks/scaffold-eth";
 import hypergraphConfig, {
@@ -35,6 +35,20 @@ interface GraphPublishingStep {
  * @returns Functions and state for publishing operations
  */
 export const useGraphPublishing = (initialSpaceId = getDefaultSpaceId()) => {
+  // Add a ref to track state changes
+  const prevStateRef = useRef<PublishingState | null>(null);
+
+  // Add a ref to track the current state reliably (avoiding async state update issues)
+  const currentStateRef = useRef<PublishingState>({
+    spaceId: initialSpaceId,
+    operationName: "",
+    ipfsCid: "",
+    txData: null,
+    txHash: null,
+    status: "Ready",
+    step: 1,
+  });
+
   const [state, setState] = useState<PublishingState>({
     spaceId: initialSpaceId,
     operationName: "",
@@ -44,6 +58,106 @@ export const useGraphPublishing = (initialSpaceId = getDefaultSpaceId()) => {
     status: "Ready",
     step: 1,
   });
+
+  // Custom setState function that updates both the React state and our ref
+  const updateState = useCallback((update: Partial<PublishingState> | ((prev: PublishingState) => PublishingState)) => {
+    setState(prev => {
+      // Handle both function and object updates
+      const newState = typeof update === "function" ? update(prev) : { ...prev, ...update };
+
+      // Update our ref immediately to ensure reliable access to latest state
+      currentStateRef.current = newState;
+
+      return newState;
+    });
+  }, []);
+
+  // Add effect to monitor state changes
+  useEffect(() => {
+    // Skip first render
+    if (prevStateRef.current === null) {
+      prevStateRef.current = state;
+      // Initialize currentStateRef with initial state
+      currentStateRef.current = state;
+      return;
+    }
+
+    // Track significant state changes
+    const prev = prevStateRef.current;
+
+    // Log txData changes
+    if (prev.txData !== state.txData) {
+      console.log("🔄 txData changed:", {
+        from: prev.txData ? "exists" : "null",
+        to: state.txData ? "exists" : "null",
+        timestamp: new Date().toISOString(),
+      });
+
+      if (prev.txData && !state.txData) {
+        console.warn("⚠️ txData was reset to null!");
+      }
+
+      if (!prev.txData && state.txData) {
+        console.log("✅ txData was set:", {
+          to: state.txData.to.substring(0, 10) + "...",
+          dataLength: state.txData.data.length,
+        });
+      }
+    }
+
+    // Log step changes
+    if (prev.step !== state.step) {
+      console.log(`🔄 Step changed: ${prev.step} → ${state.step}`);
+    }
+
+    // Log status changes
+    if (prev.status !== state.status) {
+      console.log(`🔄 Status changed: "${prev.status}" → "${state.status}"`);
+    }
+
+    // Also update the currentStateRef
+    currentStateRef.current = state;
+
+    // Update ref
+    prevStateRef.current = state;
+  }, [state]);
+
+  // Add useEffect to log API endpoints on mount
+  useEffect(() => {
+    console.log("📌 Hypergraph configuration:");
+    console.log(`  Default network: ${hypergraphConfig.defaultNetwork}`);
+    console.log(`  Default space ID: ${hypergraphConfig.defaultSpaceId}`);
+    console.log(`  TESTNET API: ${hypergraphConfig.endpoints.TESTNET.url}`);
+    console.log(`  MAINNET API: ${hypergraphConfig.endpoints.MAINNET.url}`);
+    console.log(`  Actual TESTNET API: ${hypergraphConfig.endpoints.TESTNET.actualUrl}`);
+    console.log(`  Actual MAINNET API: ${hypergraphConfig.endpoints.MAINNET.actualUrl}`);
+
+    // For development environment, we're now using a proxy to avoid CORS issues
+    const isDev = process.env.NODE_ENV === "development";
+    if (isDev) {
+      console.log("🔄 Using API proxy in development environment to avoid CORS issues");
+    }
+
+    // Simple check to verify proxy API is accessible, much safer than direct CORS check
+    const checkApiAccess = async () => {
+      try {
+        // Check local proxy API endpoint with OPTIONS
+        const response = await fetch("/api/proxy", { method: "OPTIONS" });
+        console.log(`API proxy check: ${response.ok ? "OK" : "Failed"} (${response.status})`);
+
+        if (!response.ok) {
+          console.warn("⚠️ API proxy may not be working correctly");
+        }
+      } catch (error) {
+        console.error("Error checking API proxy:", error);
+      }
+    };
+
+    // Execute the API check (only in browser environment)
+    if (typeof window !== "undefined") {
+      checkApiAccess().catch(console.error);
+    }
+  }, []);
 
   const transactor = useTransactor();
 
@@ -91,28 +205,28 @@ export const useGraphPublishing = (initialSpaceId = getDefaultSpaceId()) => {
    * Update the space ID
    */
   const setSpaceId = (spaceId: string) => {
-    setState(prev => ({ ...prev, spaceId }));
+    updateState(prev => ({ ...prev, spaceId }));
   };
 
   /**
    * Update the operation name
    */
   const setOperationName = (operationName: string) => {
-    setState(prev => ({ ...prev, operationName }));
+    updateState(prev => ({ ...prev, operationName }));
   };
 
   /**
    * Set the current status
    */
   const setStatus = (status: string) => {
-    setState(prev => ({ ...prev, status }));
+    updateState(prev => ({ ...prev, status }));
   };
 
   /**
    * Reset the publishing state
    */
   const resetPublishing = () => {
-    setState(prev => ({
+    updateState(prev => ({
       ...prev,
       ipfsCid: "",
       txData: null,
@@ -126,264 +240,458 @@ export const useGraphPublishing = (initialSpaceId = getDefaultSpaceId()) => {
    * Publish operations to IPFS
    */
   const publishToIPFS = async (operations: any[], authorAddress?: string): Promise<string | null> => {
-    if (!state.operationName) {
+    console.log("========== PUBLISH TO IPFS START ==========");
+    console.log(`Attempting to publish ${operations.length} operations to IPFS`);
+
+    // Always use currentStateRef for reliable state access
+    const currentState = currentStateRef.current;
+
+    console.log(`Current state before publishing:`, {
+      spaceId: currentState.spaceId,
+      operationName: currentState.operationName,
+      ipfsCid: currentState.ipfsCid ? currentState.ipfsCid : "null",
+      step: currentState.step,
+    });
+
+    if (!currentState.operationName) {
+      console.error("Operation name is missing");
       setStatus("Operation name is required");
+      console.log("========== PUBLISH TO IPFS END (NO OPERATION NAME) ==========");
       return null;
     }
 
     if (operations.length === 0) {
+      console.error("No operations to publish");
       setStatus("No operations to publish");
+      console.log("========== PUBLISH TO IPFS END (NO OPERATIONS) ==========");
       return null;
     }
 
     try {
+      console.log("Setting status to 'Publishing to IPFS...'");
       setStatus("Publishing to IPFS...");
 
-      // Following the structure from https://github.com/graphprotocol/grc-20-ts
-      const result = await Ipfs.publishEdit({
-        name: state.operationName,
-        ops: operations,
+      // Log the first few operations for debugging
+      console.log(
+        `First ${Math.min(3, operations.length)} operations:`,
+        operations.slice(0, 3).map(op => ({
+          type: op.type,
+          action: op.action,
+          id: op.id?.substring(0, 8) || "unknown",
+        })),
+      );
+
+      console.log("Calling Ipfs.publishEdit with:", {
+        name: currentState.operationName,
+        opsCount: operations.length,
         author: authorAddress || "0x0000000000000000000000000000000000000000",
       });
 
-      // The API returns the CID prefixed with ipfs:// according to docs
-      // Make sure we're handling the format correctly
-      const ipfsCid = result.cid.startsWith("ipfs://") ? result.cid.substring(7) : result.cid;
+      // Following the structure from https://github.com/graphprotocol/grc-20-ts
+      try {
+        const result = await Ipfs.publishEdit({
+          name: currentState.operationName,
+          ops: operations,
+          author: authorAddress || "0x0000000000000000000000000000000000000000",
+        });
 
-      console.log("IPFS publishing successful:", {
-        fullCid: result.cid,
-        extractedCid: ipfsCid,
-        operationCount: operations.length,
-      });
+        console.log("IPFS.publishEdit succeeded with result:", result);
 
-      setState(prev => ({
-        ...prev,
-        ipfsCid,
-        status: `Published to IPFS: ${ipfsCid}`,
-        step: 2,
-      }));
+        // The API returns the CID prefixed with ipfs:// according to docs
+        // Make sure we're handling the format correctly
+        if (!result || !result.cid) {
+          console.error("IPFS publishing failed: No CID returned");
+          setStatus("IPFS publishing failed: No CID returned");
+          console.log("========== PUBLISH TO IPFS END (NO CID) ==========");
+          return null;
+        }
 
-      return ipfsCid;
+        const ipfsCid = result.cid.startsWith("ipfs://") ? result.cid.substring(7) : result.cid;
+
+        console.log("IPFS publishing successful:", {
+          fullCid: result.cid,
+          extractedCid: ipfsCid,
+          operationCount: operations.length,
+        });
+
+        // Save the CID to state and update status using our reliable state update function
+        console.log(`Updating state with ipfsCid: ${ipfsCid}`);
+
+        // Use a local variable to ensure we have the value
+        const finalCid = ipfsCid;
+
+        // Update state immediately with our reliable state update function
+        updateState({
+          ipfsCid: finalCid,
+          status: `Published to IPFS: ${finalCid}`,
+          step: 2,
+        });
+
+        // Log the updated state from our ref to confirm it was set
+        console.log("Updated state after IPFS publishing:", {
+          ipfsCid: currentStateRef.current.ipfsCid,
+          status: currentStateRef.current.status,
+          step: currentStateRef.current.step,
+        });
+
+        console.log(`Returning CID from publishToIPFS: ${finalCid}`);
+        console.log("========== PUBLISH TO IPFS END (SUCCESS) ==========");
+        return finalCid;
+      } catch (ipfsError) {
+        console.error("Error in Ipfs.publishEdit:", ipfsError);
+        console.error("Error details:", {
+          name: ipfsError instanceof Error ? ipfsError.name : "Unknown",
+          message: ipfsError instanceof Error ? ipfsError.message : String(ipfsError),
+          stack: ipfsError instanceof Error ? ipfsError.stack : "No stack trace",
+        });
+        throw ipfsError; // Re-throw to be caught by the outer try/catch
+      }
     } catch (error) {
       console.error("IPFS publishing error:", error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       setStatus(`Error publishing to IPFS: ${errorMessage}`);
+      console.log("========== PUBLISH TO IPFS END (ERROR) ==========");
       return null;
     }
   };
 
   /**
-   * Get transaction data for the IPFS CID
+   * Fetch call data from the API based on the IPFS CID and space ID
+   * @param ipfsCid The IPFS CID to use
+   * @param spaceId The space ID to use
+   * @param network The network to use (TESTNET or MAINNET)
+   * @returns The transaction data object or null if failed
    */
-  const getCallData = async (
-    network: NetworkType = hypergraphConfig.defaultNetwork,
-  ): Promise<{ to: string; data: string } | null> => {
-    if (!state.spaceId) {
-      setStatus("Space ID is required");
+  const getCallData = async (network: NetworkType = "MAINNET"): Promise<{ to: string; data: string } | null> => {
+    console.log("============= GET CALL DATA START =============");
+    const { spaceId, ipfsCid } = currentStateRef.current;
+
+    console.log(`Getting call data with:
+- spaceId: ${spaceId || "not set"}
+- ipfsCid: ${ipfsCid || "not set"}
+- network: ${network}`);
+
+    // Check if IPFS CID is missing
+    if (!ipfsCid) {
+      console.error("IPFS CID is missing - Check the publishToIPFS function");
+      updateState(prev => ({
+        ...prev,
+        status: "IPFS CID is missing",
+        error: "IPFS CID is required for fetching call data",
+      }));
+      console.log("============= GET CALL DATA END (ERROR: MISSING CID) =============");
       return null;
     }
 
-    if (!state.ipfsCid) {
-      setStatus("No IPFS CID available. Publish to IPFS first.");
+    // Check if Space ID is missing
+    if (!spaceId) {
+      console.error("Space ID is missing");
+      updateState(prev => ({
+        ...prev,
+        status: "Space ID is missing",
+        error: "Space ID is required for fetching call data",
+      }));
+      console.log("============= GET CALL DATA END (ERROR: MISSING SPACE ID) =============");
       return null;
     }
 
     try {
-      setStatus("Getting call data...");
+      updateState(prev => ({
+        ...prev,
+        status: "Fetching call data...",
+      }));
 
-      // Format the CID correctly with ipfs:// prefix if needed
-      const formattedCid = state.ipfsCid.startsWith("ipfs://") ? state.ipfsCid : `ipfs://${state.ipfsCid}`;
+      // Use the API endpoint from hypergraph.config.js
+      const apiEndpoint = getCalldataApiUrl(network);
+      console.log(`Using API endpoint: ${apiEndpoint}`);
 
-      // Try to use the SDK directly using the documented methods
-      // This approach aligns with the repo documentation
+      // Use the mock data if configured
+      if (shouldUseMockData()) {
+        console.log("Using mock transaction data (development only)");
+        const mockData = getMockTxData();
+
+        updateState(prev => ({
+          ...prev,
+          txData: mockData,
+          status: "Call data ready (mock)",
+          step: 3,
+        }));
+
+        console.log("Mock call data set to state:", {
+          to: mockData.to.substring(0, 10) + "...",
+          dataLength: mockData.data.length,
+        });
+        console.log("============= GET CALL DATA END (MOCK SUCCESS) =============");
+        return mockData;
+      }
+
+      // Try to fetch calldata through local API proxy first (to avoid CORS issues)
+      console.log(`Fetching calldata for CID ${ipfsCid} and space ${spaceId} via local proxy`);
+      let response;
+
       try {
-        // Check if we have direct API access
-        // Note: According to the documentation, we need to make a direct fetch request
-        console.log("Making direct call to the external API based on documentation");
-
-        // Get the API URL from config
-        const apiEndpoint = getCalldataApiUrl(state.spaceId, network);
-
-        console.log(`Calling direct API: ${apiEndpoint}`);
-        console.log(
-          `Request body:`,
-          JSON.stringify(
-            {
-              cid: formattedCid,
-              network,
-            },
-            null,
-            2,
-          ),
-        );
-
-        const directResponse = await fetch(apiEndpoint, {
+        // Use the local API proxy
+        response = await fetch("/api/knowledge-graph-api/calldata", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Accept: "application/json",
           },
           body: JSON.stringify({
-            cid: formattedCid,
+            spaceId,
+            cid: ipfsCid,
             network,
           }),
         });
 
-        if (!directResponse.ok) {
-          console.error(`Direct API call failed: ${directResponse.status} ${directResponse.statusText}`);
-          throw new Error(`Direct API call failed: ${directResponse.status}`);
-        }
+        console.log(`Local proxy API response status: ${response.status}`);
 
-        const callDataResult = await directResponse.json();
-        console.log("Direct API call data result:", callDataResult);
-
-        if (callDataResult && callDataResult.to && callDataResult.data) {
-          setState(prev => ({
-            ...prev,
-            txData: callDataResult,
-            status: "Call data ready (via direct API)",
-            step: 3,
-          }));
-
-          return callDataResult;
-        } else {
-          throw new Error("Direct API returned invalid call data");
-        }
-      } catch (directApiError) {
-        console.warn("Could not use direct API:", directApiError);
-        console.log("Falling back to proxy API approach...");
-
-        // Continue with the local proxy API approach
-        const apiUrl = `/api/knowledge-graph-api/calldata`;
-
-        console.log(`Calling proxy API with spaceId: ${state.spaceId} and ipfsCid: ${formattedCid}`);
-        console.log(`Using network: ${network}, via local proxy API`);
-
-        try {
-          const response = await fetch(apiUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Accept: "application/json",
-            },
-            body: JSON.stringify({
-              spaceId: state.spaceId,
-              cid: formattedCid,
-              network,
-            }),
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Local proxy API error:", {
+            status: response.status,
+            statusText: response.statusText,
+            errorText,
           });
-
-          console.log(`API response status: ${response.status}`);
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error("API Error Response:", {
-              status: response.status,
-              statusText: response.statusText,
-              url: response.url,
-              headers: Object.fromEntries([...response.headers.entries()]),
-              body: errorText,
-            });
-
-            throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-          }
-
-          const data = await response.json();
-          console.log("API Success Response:", data);
-
-          // Validate that the response contains the expected to and data fields
-          if (!data.to || !data.data) {
-            console.error("API response missing required fields:", data);
-            throw new Error("Invalid API response: missing to or data field");
-          }
-
-          setState(prev => ({
-            ...prev,
-            txData: data,
-            status: "Call data ready",
-            step: 3,
-          }));
-
-          return data;
-        } catch (apiError) {
-          console.error("API request failed:", apiError);
-          throw apiError; // Re-throw to be caught by the outer try/catch
+          throw new Error(`Local proxy API error: ${response.status} ${response.statusText}`);
         }
-      }
-    } catch (error) {
-      console.error("All approaches failed, falling back to mock data:", error);
 
-      // Check if we should use mock data from config
-      if (shouldUseMockData()) {
-        console.warn("USING MOCK DATA AS FALLBACK - For development only");
-        const mockData = getMockTxData();
+        const data = await response.json();
+        console.log("Calldata response received:", data);
 
-        console.log(`Mock data being used: ${JSON.stringify(mockData, null, 2)}`);
-        console.log("NOTE: This is mock data for development purposes only.");
+        // Extract the transaction data from the response, handling both possible formats:
+        // 1. { calldata: { to: string, data: string } }
+        // 2. { to: string, data: string }
+        let txData: { to: string; data: string };
 
-        setState(prev => ({
+        if (data.calldata && data.calldata.to && data.calldata.data) {
+          // Format 1: Nested calldata object
+          txData = {
+            to: data.calldata.to,
+            data: data.calldata.data,
+          };
+        } else if (data.to && data.data) {
+          // Format 2: Direct properties
+          txData = {
+            to: data.to,
+            data: data.data,
+          };
+        } else {
+          console.error("Invalid response format - missing transaction data:", data);
+          throw new Error("Invalid response format - missing transaction data fields");
+        }
+
+        console.log("Transaction data successfully extracted:", {
+          to: txData.to.substring(0, 10) + "...",
+          dataLength: txData.data.length,
+        });
+
+        // Update state with transaction data
+        updateState(prev => ({
           ...prev,
-          txData: mockData,
-          status: "Call data ready (MOCK DATA - API fallback)",
+          txData,
+          status: "Call data ready",
           step: 3,
         }));
 
-        return mockData;
-      } else {
-        setStatus(`Error getting call data: ${error instanceof Error ? error.message : String(error)}`);
+        console.log("============= GET CALL DATA END (SUCCESS) =============");
+        return txData;
+      } catch (error) {
+        console.error("Error fetching calldata via local proxy:", error);
+
+        // If we're in development mode, use mock data as fallback
+        if (shouldUseMockData()) {
+          console.warn("FALLING BACK TO MOCK DATA - For development only");
+          const mockData = getMockTxData();
+
+          updateState(prev => ({
+            ...prev,
+            txData: mockData,
+            status: "Call data ready (mock fallback)",
+            step: 3,
+          }));
+
+          console.log("Mock call data set to state:", {
+            to: mockData.to.substring(0, 10) + "...",
+            dataLength: mockData.data.length,
+          });
+          console.log("============= GET CALL DATA END (MOCK FALLBACK) =============");
+          return mockData;
+        }
+
+        // If we're not in development mode, propagate the error
+        updateState(prev => ({
+          ...prev,
+          status: "Failed to fetch call data",
+          error: error instanceof Error ? error.message : String(error),
+        }));
+
+        console.log("============= GET CALL DATA END (ERROR) =============");
         return null;
       }
+    } catch (error) {
+      console.error("Error in getCallData:", error);
+
+      updateState(prev => ({
+        ...prev,
+        status: "Error fetching call data",
+        error: error instanceof Error ? error.message : String(error),
+      }));
+
+      console.log("============= GET CALL DATA END (ERROR) =============");
+      return null;
     }
   };
 
   /**
-   * Attempt to send a transaction with the provided data
-   * This function handles all the wallet-related checks and error handling
+   * Send the transaction to the blockchain
    */
   const sendTransaction = async (): Promise<`0x${string}` | null> => {
-    if (!state.txData) {
-      console.error("No transaction data available");
+    console.log("========== SEND TRANSACTION START ==========");
+
+    // Always use currentStateRef for reliable state access
+    const currentState = currentStateRef.current;
+
+    console.log("Current state before sending transaction:", {
+      step: currentState.step,
+      hasTxData: !!currentState.txData,
+      status: currentState.status,
+      ipfsCid: currentState.ipfsCid,
+    });
+
+    if (currentState.txData) {
+      console.log("Transaction data to send:", {
+        to: currentState.txData.to,
+        dataLength: currentState.txData.data ? currentState.txData.data.length : 0,
+        dataPreview: currentState.txData.data ? `${currentState.txData.data.substring(0, 50)}...` : "null",
+      });
+    }
+
+    if (!currentState.txData) {
+      console.error("No transaction data available!");
+      setStatus("No transaction data available. Get call data first.");
+
+      // Additional logging to help debug
+      console.error("No transaction data available, can I increase logging to see the response?", {
+        currentState: { ...currentState },
+        ipfsCidAvailable: !!currentState.ipfsCid,
+        step: currentState.step,
+      });
+
+      console.log("========== SEND TRANSACTION END (NO DATA) ==========");
       return null;
     }
 
-    // Validate that the txData contains necessary properties
-    if (!state.txData.to || !state.txData.data) {
-      console.error("Invalid transaction data:", state.txData);
+    if (!transactor) {
+      setStatus("Transactor not available");
+      console.log("========== SEND TRANSACTION END (NO TRANSACTOR) ==========");
       return null;
     }
 
+    // Additional validation and logging
+    if (typeof currentState.txData !== "object") {
+      console.error("Transaction data is not an object:", currentState.txData);
+      setStatus("Invalid transaction data format");
+      console.log("========== SEND TRANSACTION END (INVALID DATA FORMAT) ==========");
+      return null;
+    }
+
+    // Check if txData has the required fields
+    if (!currentState.txData.to || !currentState.txData.data) {
+      console.error("Transaction data missing required fields:", {
+        hasTo: !!currentState.txData.to,
+        hasData: !!currentState.txData.data,
+        txData: currentState.txData,
+      });
+
+      // Attempt to parse or fix transaction data if it's in a different format
+      try {
+        // If the object has different field names or structure, try to extract the needed data
+        const txDataAny = currentState.txData as any; // Type as any to allow for different field structures
+        const extractedData = {
+          to: txDataAny.to || txDataAny.address || txDataAny.contractAddress,
+          data: txDataAny.data || txDataAny.calldata || txDataAny.txData,
+        };
+
+        console.log("Attempting to extract transaction data from non-standard format:", extractedData);
+
+        if (extractedData.to && extractedData.data) {
+          console.log("Successfully extracted transaction data from non-standard format:", extractedData);
+
+          // Proceed with the extracted data
+          updateState(prev => ({
+            ...prev,
+            txData: extractedData,
+            status: "Extracted transaction data from non-standard format",
+          }));
+
+          // Continue with the extracted data
+          // Note: We need to use the extracted data directly since state updates are async
+          return sendTransactionWithData(extractedData);
+        } else {
+          console.error("Could not extract valid transaction data");
+          setStatus("Could not extract valid transaction data");
+          console.log("========== SEND TRANSACTION END (EXTRACTION FAILED) ==========");
+          return null;
+        }
+      } catch (err) {
+        console.error("Failed to parse alternative transaction data format:", err);
+        setStatus("Invalid transaction data format");
+        console.log("========== SEND TRANSACTION END (PARSE ERROR) ==========");
+        return null;
+      }
+    }
+
+    // Use the current txData to send the transaction
+    return sendTransactionWithData(currentState.txData);
+  };
+
+  /**
+   * Helper function to send a transaction with specific data
+   * This avoids issues with async state updates
+   */
+  const sendTransactionWithData = async (txData: { to: string; data: string }): Promise<`0x${string}` | null> => {
     try {
-      setState({ ...state, status: "sending" });
+      console.log("Setting state to 'sending'");
+      updateState(prev => ({ ...prev, status: "sending" }));
 
       // Log the transaction data being sent
-      console.log("Sending transaction to:", state.txData.to);
-      console.log("Transaction data length:", state.txData.data.length);
-      console.log("Transaction data (subset):", state.txData.data.substring(0, 66) + "...");
-      console.log("Space ID:", state.spaceId);
+      console.log("Sending transaction to:", txData.to);
+      console.log("Transaction data length:", txData.data.length);
+      console.log("Transaction data (subset):", txData.data.substring(0, 66) + "...");
+      console.log("Space ID:", currentStateRef.current.spaceId);
 
       // Send the transaction using the existing transactor hook
+      console.log("Calling transactor with transaction data");
       const hash = await transactor({
-        to: state.txData.to,
+        to: txData.to,
         value: BigInt(0),
-        data: state.txData.data as `0x${string}`,
+        data: txData.data as `0x${string}`,
       });
 
       if (hash) {
         console.log(`📝 Transaction sent! Hash: ${hash}`);
-        setState(prev => ({
+        updateState(prev => ({
           ...prev,
           txHash: hash,
           status: "success",
           step: 4,
         }));
+
+        console.log(`New state after successful transaction:`, {
+          step: 4,
+          status: "success",
+          txHash: hash,
+        });
+        console.log("========== SEND TRANSACTION END (SUCCESS) ==========");
         return hash;
       } else {
         console.error("Transaction was sent but no hash was returned");
-        setState(prev => ({
+        updateState(prev => ({
           ...prev,
           status: "error",
           error: "No transaction hash returned",
         }));
+        console.log("========== SEND TRANSACTION END (NO HASH) ==========");
         return null;
       }
     } catch (error) {
@@ -403,32 +711,33 @@ export const useGraphPublishing = (initialSpaceId = getDefaultSpaceId()) => {
 
       if (errorMessage.includes("user rejected")) {
         userMessage = "Transaction was rejected by user";
+        console.log("User rejected the transaction");
       } else if (errorMessage.includes("insufficient funds")) {
         userMessage = "Insufficient funds to complete the transaction";
+        console.log("User has insufficient funds");
       } else if (
         errorMessage.includes("nonce too low") ||
         errorMessage.includes("replacement transaction underpriced")
       ) {
         userMessage = "Transaction nonce issue. Please try again";
+        console.log("Transaction nonce issue detected");
       }
 
-      setState(prev => ({
+      updateState(prev => ({
         ...prev,
         status: "error",
         error: userMessage,
         errorDetails: `${errorName}: ${errorMessage}`,
       }));
+
+      console.log(`Updated state with error: ${userMessage}`);
+      console.log("========== SEND TRANSACTION END (ERROR) ==========");
       return null;
     }
   };
 
   /**
    * Complete publishing flow: IPFS → Call Data → Transaction
-   * @param operations Operations to publish
-   * @param authorAddress Author address
-   * @param useSmartAccount Whether to use Geo smart account
-   * @param privateKey Private key for Geo smart account
-   * @param network Network to use (TESTNET or MAINNET)
    */
   const publishToChain = async (
     operations: any[],
@@ -437,16 +746,152 @@ export const useGraphPublishing = (initialSpaceId = getDefaultSpaceId()) => {
     privateKey?: string,
     network: NetworkType = "MAINNET",
   ): Promise<string | `0x${string}` | null> => {
-    // Step 1: Publish to IPFS
-    const cid = await publishToIPFS(operations, authorAddress);
-    if (!cid) return null;
+    console.log("========== PUBLISH TO CHAIN START ==========");
+    console.log(`Publishing ${operations.length} operations to chain`);
+    console.log(`Using network: ${network}, smart account: ${useSmartAccount}`);
 
-    // Step 2: Get call data
-    const txData = await getCallData(network);
-    if (!txData) return null;
+    try {
+      // Step 1: Publish to IPFS
+      console.log("Step 1: Publishing to IPFS");
+      const cid = await publishToIPFS(operations, authorAddress);
+      if (!cid) {
+        console.error("Failed to publish to IPFS");
+        setStatus("Failed to publish to IPFS");
+        console.log("========== PUBLISH TO CHAIN END (IPFS FAILED) ==========");
+        return null;
+      }
 
-    // Step 3: Send transaction
-    return await sendTransaction();
+      // Verify the IPFS CID was set correctly in state
+      const ipfsCid = currentStateRef.current.ipfsCid;
+      if (!ipfsCid || ipfsCid !== cid) {
+        console.warn(`⚠️ State ipfsCid (${ipfsCid}) does not match returned CID (${cid})`);
+        // Force update the state to ensure consistency
+        updateState(prev => ({
+          ...prev,
+          ipfsCid: cid,
+          status: `Published to IPFS: ${cid} (recovered)`,
+          step: 2,
+        }));
+        console.log("Forced state update to ensure IPFS CID is set correctly");
+      }
+
+      console.log(`Successfully published to IPFS: ${cid}`);
+
+      // Step 2: Get call data
+      console.log("Step 2: Getting call data");
+      try {
+        const txData = await getCallData(network);
+        if (!txData) {
+          console.error("Failed to get call data");
+          setStatus("Failed to get transaction data from API");
+          console.log("========== PUBLISH TO CHAIN END (CALL DATA FAILED) ==========");
+          return null;
+        }
+
+        // Verify the txData was set correctly in state
+        if (!currentStateRef.current.txData) {
+          console.warn("⚠️ txData not set in state despite successful call data fetch");
+          // Force update the state to ensure consistency
+          updateState(prev => ({
+            ...prev,
+            txData,
+            status: "Call data ready (recovered)",
+            step: 3,
+          }));
+          console.log("Forced state update to ensure txData is set correctly");
+        }
+
+        console.log("Successfully retrieved call data:", {
+          to: txData.to.substring(0, 10) + "...",
+          dataLength: txData.data.length,
+        });
+
+        // Step 3: Send transaction - use smart account if specified
+        console.log("Step 3: Sending transaction");
+
+        if (useSmartAccount && privateKey) {
+          console.log("Using GEO smart account for transaction");
+          try {
+            // Following the structure from https://github.com/graphprotocol/grc-20-ts
+            setStatus("Initializing smart account wallet...");
+
+            // Format private key to ensure it has 0x prefix
+            const formattedPrivateKey = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
+
+            const smartAccountWalletClient = await getSmartAccountWalletClient({
+              privateKey: formattedPrivateKey as `0x${string}`,
+              // Use custom RPC URL if needed - we'll use the default
+            });
+
+            console.log("Smart account wallet client initialized, sending transaction");
+            setStatus("Sending transaction via smart account...");
+
+            const txResult = await smartAccountWalletClient.sendTransaction({
+              to: txData.to.startsWith("0x") ? (txData.to as `0x${string}`) : (`0x${txData.to}` as `0x${string}`),
+              value: 0n,
+              data: txData.data.startsWith("0x")
+                ? (txData.data as `0x${string}`)
+                : (`0x${txData.data}` as `0x${string}`),
+            });
+
+            console.log(`📝 Transaction sent via smart account! Hash: ${txResult}`);
+            updateState(prev => ({
+              ...prev,
+              txHash: txResult,
+              status: "success",
+              step: 4,
+            }));
+
+            console.log(`New state after successful transaction:`, {
+              step: 4,
+              status: "success",
+              txHash: txResult,
+            });
+            console.log("========== PUBLISH TO CHAIN END (SUCCESS) ==========");
+            return txResult;
+          } catch (smartAccountError) {
+            console.error("Smart account transaction failed:", smartAccountError);
+            const errorMsg = smartAccountError instanceof Error ? smartAccountError.message : String(smartAccountError);
+            setStatus(`Smart account transaction failed: ${errorMsg}`);
+
+            // If this is a nonce error, add a more specific message
+            if (errorMsg.includes("nonce") && errorMsg.includes("too low")) {
+              setStatus("Nonce too low error. The account has pending transactions or a nonce mismatch.");
+              console.warn("This is likely because the smart account has other pending transactions. Try again later.");
+            }
+
+            console.log("========== PUBLISH TO CHAIN END (SMART ACCOUNT ERROR) ==========");
+            return null;
+          }
+        } else {
+          // Use regular transactor for non-smart-account transactions
+          const txHash = await sendTransaction();
+          if (!txHash) {
+            console.error("Failed to send transaction");
+            setStatus("Failed to send transaction to the blockchain");
+            console.log("========== PUBLISH TO CHAIN END (TRANSACTION FAILED) ==========");
+            return null;
+          }
+
+          console.log(`Transaction sent successfully! Hash: ${txHash}`);
+          console.log("========== PUBLISH TO CHAIN END (SUCCESS) ==========");
+          return txHash;
+        }
+      } catch (callDataError) {
+        console.error("Error getting call data:", callDataError);
+        setStatus(
+          `Error getting transaction data: ${callDataError instanceof Error ? callDataError.message : String(callDataError)}`,
+        );
+        console.log("========== PUBLISH TO CHAIN END (CALL DATA ERROR) ==========");
+        return null;
+      }
+    } catch (error) {
+      console.error("Error in publishing chain:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setStatus(`Error in chain publishing: ${errorMessage}`);
+      console.log("========== PUBLISH TO CHAIN END (ERROR) ==========");
+      return null;
+    }
   };
 
   /**
@@ -481,50 +926,23 @@ export const useGraphPublishing = (initialSpaceId = getDefaultSpaceId()) => {
         const data = await response.json();
         console.log("Callback data received:", data);
 
-        if (data.ipfsCid) {
-          setStatus("IPFS CID received");
-          setState(prev => ({
-            ...prev,
-            ipfsCid: data.ipfsCid,
-            step: 5,
-          }));
-          return { step: 5, status: "IPFS CID received" };
-        } else {
-          console.error("No IPFS CID in callback data:", data);
-          return { step: 5, status: "No IPFS CID in response" };
-        }
-      } catch (apiError) {
-        console.error("Callback API request failed, using fallback:", apiError);
+        // Extract the step and status from the response
+        const step = data.step || 0;
+        const status = data.status || "Unknown";
 
-        // FALLBACK: Use mock callback data for development
-        console.warn("USING MOCK CALLBACK DATA - For development only");
-
-        const mockIpfsCid = "mock-ipfs-cid-for-transaction-" + txHash.substring(0, 8);
-
-        setStatus("IPFS CID received (mock)");
-        setState(prev => ({
-          ...prev,
-          ipfsCid: mockIpfsCid,
-          step: 5,
-        }));
-
-        return { step: 5, status: "IPFS CID received (mock data)" };
+        console.log(`Callback data - Step: ${step}, Status: ${status}`);
+        return { step, status };
+      } catch (error) {
+        console.error("Error fetching callback data:", error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        setStatus(`Error fetching callback data: ${errorMessage}`);
+        return { step: 0, status: "Error" };
       }
     } catch (error) {
-      console.error("Error fetching callback data:", error);
-
-      // Extract detailed error information
-      let errorMessage = "Error fetching callback data";
-      if (error instanceof Error) {
-        errorMessage = error.message;
-        console.error("Error details:", {
-          name: error.name,
-          message: error.message,
-          stack: error.stack,
-        });
-      }
-
-      return { step: 5, status: `Error: ${errorMessage}` };
+      console.error("Error in getCallbackData:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setStatus(`Error in getCallbackData: ${errorMessage}`);
+      return { step: 0, status: "Error" };
     }
   };
 
@@ -584,28 +1002,17 @@ export const useGraphPublishing = (initialSpaceId = getDefaultSpaceId()) => {
   };
 
   return {
-    // State
-    ...state,
-
-    // State updaters
+    state,
+    createSpace,
     setSpaceId,
     setOperationName,
     setStatus,
     resetPublishing,
-
-    // Space creation
-    createSpace,
-
-    // Publishing flow
     publishToIPFS,
     getCallData,
     sendTransaction,
     publishToChain,
-
-    // Callback data
     getCallbackData,
-
-    // Verification
     verifyTransactionSpace,
   };
 };

@@ -46,6 +46,7 @@ This application allows you to create, manage and publish knowledge graph data t
     -   [Core Concepts](#core-concepts)
     -   [ID System](#id-system)
     -   [Value Types & Data Formats](#value-types--data-formats)
+    -   [Relation Examples](#relation-examples)
     -   [Operation Types](#operation-types)
     -   [Publication Workflow](#publication-workflow)
 -   [Traditional Interface Usage Guide](#traditional-interface-usage-guide)
@@ -1307,6 +1308,15 @@ The GRC-20 protocol supports several value types:
 Additionally, for UI purposes, this application supports:
 
 -   **RELATION** - Used to link entities (converted to TEXT when interacting with the SDK)
+
+### Relation Examples
+
+Here are examples of how entities can be related:
+
+-   Person `→ WORKS_AT →` Company
+-   Person `→ KNOWS →` Person
+-   Book `→ AUTHORED_BY →` Person
+-   City `→ LOCATED_IN →` Country
 
 ### Operation Types
 
