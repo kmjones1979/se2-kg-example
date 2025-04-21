@@ -730,6 +730,15 @@ const handlePublishToChain = async (operations) => {
 
 When the `publishToChain` prop is provided, the component will display a one-click "Publish Operations with Smart Account" button that combines all publishing steps into a single action.
 
+#### Transaction Status Display
+
+The PublishCard provides clear feedback on transaction status:
+
+-   When a transaction is sent (hash exists) but not yet confirmed (receipt not available), it displays "Success! Transaction sent." with a checkmark icon
+-   Once confirmed, it shows "Confirmed in block [blockNumber]"
+
+This immediate success feedback helps users understand their transaction was successfully submitted to the network, while waiting for the final confirmation.
+
 ### ExpandableCard
 
 A reusable card component with expand/collapse functionality.

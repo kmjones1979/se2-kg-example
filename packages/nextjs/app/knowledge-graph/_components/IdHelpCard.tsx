@@ -16,7 +16,15 @@ export const IdHelpCard = () => {
   );
 
   return (
-    <ExpandableCard title="About IDs" icon={infoIcon} defaultExpanded={true}>
+    <ExpandableCard
+      title={
+        <div className="flex items-center gap-2">
+          {infoIcon}
+          <span>About IDs</span>
+        </div>
+      }
+      defaultExpanded={true}
+    >
       <div className="space-y-2 text-sm">
         <p>
           <span className="font-bold text-primary">Entity IDs</span> - Unique identifiers for entities (nodes) in your

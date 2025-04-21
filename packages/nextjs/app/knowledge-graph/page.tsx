@@ -21,7 +21,7 @@ type Operation = {
 
 const KnowledgeGraph = () => {
   const { address: connectedAddress } = useAccount();
-  const [showHookDemo, setShowHookDemo] = useState(true);
+  const [showHookDemo, setShowHookDemo] = useState(false);
 
   // State for tracking operations
   const [localOpsCount, setLocalOpsCount] = useState(0);

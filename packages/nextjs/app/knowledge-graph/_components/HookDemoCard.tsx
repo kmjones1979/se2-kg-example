@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useGraphEntities, useGraphIds, useGraphOperations, useGraphPublishing } from "../_hooks";
 import { OperationsLog } from "./OperationsLog";
-import { getGeoPrivateKey, shouldUseSmartAccount } from "~~/hypergraph.config";
+import { useConfig } from "wagmi";
+import { getDefaultSpaceId, getGeoPrivateKey, shouldUseSmartAccount } from "~~/hypergraph.config";
 
 /**
  * Props for HookDemoCard component
@@ -76,6 +77,9 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
 
   // Add a ref to store operations between steps
   const operationsRef = useRef<any[]>([]);
+
+  // Get the Wagmi config for network interactions
+  const wagmiConfig = useConfig();
 
   // Add an effect to check operations and use backup if needed
   useEffect(() => {
@@ -204,6 +208,53 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
     }
   };
 
+  // Add this helper function to transform operations if needed
+  const transformOperationsIfNeeded = (operations: any[]): any[] => {
+    if (!operations || operations.length === 0) {
+      return operations;
+    }
+
+    console.log("Checking if operations need transformation...");
+
+    // Check if operations are already in the right format
+    const firstOp = operations[0];
+    const hasType = "type" in firstOp;
+    const hasAction = "action" in firstOp;
+    const hasTriple = "triple" in firstOp;
+    const hasData = "data" in firstOp;
+
+    console.log("Operations format:", {
+      hasType,
+      hasAction,
+      hasTriple,
+      hasData,
+      keys: Object.keys(firstOp).join(", "),
+    });
+
+    // If operations are already in the right format (type, action, data), return them as is
+    if (hasType && hasData) {
+      console.log("Operations are already in correct format (type, data)");
+      return operations;
+    }
+
+    // If operations are in triple format, transform them
+    if (hasTriple) {
+      console.log("Transforming operations from triple format to type/data format");
+      return operations.map(op => ({
+        type: "triple",
+        action: "add",
+        data: {
+          type: "SET_TRIPLE",
+          triple: op.triple,
+        },
+      }));
+    }
+
+    // If neither format is detected, log an error and return original
+    console.warn("Unknown operation format - unable to transform");
+    return operations;
+  };
+
   // Publish all operations to IPFS and blockchain
   const handlePublish = async () => {
     console.log("========== HANDLE PUBLISH START ==========");
@@ -229,8 +280,42 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
     try {
       console.log("Getting raw operations...");
       // Always use the backup operations if the main operations array is empty
-      const rawOps = operationsCount > 0 ? getRawOperations() : operationsRef.current.map(op => op.data);
+      let rawOps = operationsCount > 0 ? getRawOperations() : operationsRef.current.map(op => op.data);
       console.log(`Using ${operationsCount > 0 ? "main" : "backup"} operations (${rawOps.length} total)`);
+
+      // Add more detailed logging of operation structure
+      console.log("===== FULL OPERATION DETAILS (MODERN HOOKS) =====");
+      if (rawOps.length > 0) {
+        console.log(`First operation sample:`, JSON.stringify(rawOps[0], null, 2));
+
+        // Check for "triple" format vs "data" field structure
+        const hasTripleField = rawOps.some(op => op.triple);
+        const hasDataField = rawOps.some(op => op.data);
+        const hasTypeField = rawOps.some(op => op.type);
+
+        console.log(`Operation structure check:`, {
+          hasTripleField,
+          hasDataField,
+          hasTypeField,
+          topLevelKeys: Object.keys(rawOps[0] || {}).join(", "),
+        });
+
+        // Check if we need to transform the operations (for compatibility)
+        if (hasTripleField && !hasTypeField) {
+          console.log("Operations appear to be in direct format - may need transformation for compatibility");
+
+          // Transform operations to the format expected by the SDK
+          const transformedOps = transformOperationsIfNeeded(rawOps);
+          if (transformedOps !== rawOps) {
+            console.log("Operations were transformed for compatibility");
+            console.log("Transformed sample:", JSON.stringify(transformedOps[0], null, 2));
+            rawOps = transformedOps;
+          }
+        } else if (hasTypeField) {
+          console.log("Operations appear to be in wrapped format with 'type' field");
+        }
+      }
+      console.log("===== END FULL OPERATION DETAILS =====");
 
       if (rawOps.length === 0) {
         console.error("No operations to publish after getting raw operations");
@@ -271,12 +356,69 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
         console.log(`Transaction sent successfully! Hash: ${txHash}`);
         setStatus(`Transaction sent! Hash: ${txHash}`);
 
-        // Clear operations on success
-        console.log("Clearing operations after successful publish");
-        clearOperations();
-        // Also clear backup operations
-        operationsRef.current = [];
-        console.log("Operations cleared");
+        // Add transaction verification - don't immediately clear operations
+        console.log("Waiting for transaction confirmation before clearing operations...");
+
+        // Create a function to verify the transaction
+        const verifyTransaction = async () => {
+          try {
+            console.log(`Verifying transaction ${txHash}...`);
+
+            // Wait for 5 seconds to allow indexing to begin
+            await new Promise(resolve => setTimeout(resolve, 5000));
+
+            // Query the Graph API to check if the data has been indexed
+            // Use spaceId from the publishing hook state
+            const apiUrl = `/api/knowledge-graph-api/verify-transaction?txHash=${txHash}&spaceId=${spaceId}`;
+            console.log(`Querying verification endpoint: ${apiUrl}`);
+
+            const response = await fetch(apiUrl);
+            const data = await response.json();
+
+            console.log(`Verification response:`, data);
+
+            if (data.success && data.details?.indexed === true) {
+              console.log(`Transaction verified successfully! Data is visible in the database.`);
+              setStatus(`Transaction confirmed! Data is now visible.`);
+
+              // Now clear operations
+              console.log("Clearing operations after successful verification");
+              clearOperations();
+              operationsRef.current = [];
+              console.log("Operations cleared after verification");
+            } else if (data.success) {
+              // Transaction is confirmed but data might not be indexed yet
+              console.log(`Transaction confirmed but data might not be indexed yet: ${data.message || "No details"}`);
+              setStatus(`Transaction confirmed, data is being indexed (this may take a few minutes).`);
+
+              // Still clear operations since transaction was successful
+              clearOperations();
+              operationsRef.current = [];
+              console.log("Operations cleared, data will be available soon");
+
+              // Inform user about indexing delay
+              setTimeout(() => {
+                setStatus(`Transaction processed. Data will appear within 2-5 minutes.`);
+              }, 3000);
+            } else {
+              console.warn(`Transaction verification failed: ${data.message || "Unknown error"}`);
+              setStatus(`Transaction sent, but verification failed: ${data.message || "Unknown error"}`);
+
+              // Don't clear operations if verification failed completely
+              console.log("Operations retained due to verification failure");
+            }
+          } catch (error) {
+            console.error("Error verifying transaction:", error);
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            setStatus(`Transaction sent, but verification failed: ${errorMsg}`);
+
+            // Don't clear operations if verification failed completely
+            console.log("Operations retained due to verification failure");
+          }
+        };
+
+        // Start verification in the background
+        verifyTransaction();
       } else {
         // Something failed
         console.error("Failed to publish to chain");
@@ -310,6 +452,33 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
     return manualOp;
   };
 
+  // Track operation for better debugging
+  const trackOperationWithDetails = (type: string, action: string, data: any) => {
+    // First, track it with the existing method
+    const op = trackOperation(type, action, data);
+
+    // Add extra logging specific to triples
+    if (type === "triple" && data?.triple) {
+      console.log("TRACKED TRIPLE DETAILS:", {
+        entityId: data.triple.entityId,
+        attributeId: data.triple.attributeId,
+        valueType: data.triple.value?.type,
+        value: data.triple.value?.value,
+        dataFormat: "Direct triple",
+      });
+    } else if (data?.type === "SET_TRIPLE" && data?.triple) {
+      console.log("TRACKED TRIPLE DETAILS:", {
+        entityId: data.triple.entityId,
+        attributeId: data.triple.attributeId,
+        valueType: data.triple.value?.type,
+        value: data.triple.value?.value,
+        dataFormat: "Nested triple",
+      });
+    }
+
+    return op;
+  };
+
   // Update the createDemoPerson function to directly add all needed operations
   const createDemoPerson = () => {
     try {
@@ -341,8 +510,8 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
       const result = addTriple(entityId, nameAttributeId, { type: "TEXT", value: personName });
       console.log("Person creation result:", result);
 
-      // Track operation manually to ensure we have a record
-      const trackedOp = trackOperation("triple", "add", tripleData);
+      // Track operation manually with extra details
+      const trackedOp = trackOperationWithDetails("triple", "add", tripleData);
       console.log(`Manually tracked person creation operation:`, trackedOp);
 
       setCreatedPersonId(entityId);
@@ -397,9 +566,11 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
 
       // Call hook function and track operation
       const nameResult = addTriple(entityId, nameAttributeId, { type: "TEXT", value: foodName });
-      console.log("Food name triple result:", nameResult);
-      const nameTrackedOp = trackOperation("triple", "add", nameTripleData);
-      console.log("Name operation tracked:", nameTrackedOp.id);
+      console.log("Food name result:", nameResult);
+
+      // Track name operation manually
+      const trackedNameOp = trackOperationWithDetails("triple", "add", nameTripleData);
+      console.log(`Manually tracked food name operation:`, trackedNameOp);
 
       // Add type attribute
       const typeAttributeId = generateAttributeId();
@@ -422,7 +593,7 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
       // Call hook function and track operation
       const typeResult = addTriple(entityId, typeAttributeId, { type: "TEXT", value: "Food" });
       console.log("Food type triple result:", typeResult);
-      const typeTrackedOp = trackOperation("triple", "add", typeTripleData);
+      const typeTrackedOp = trackOperationWithDetails("triple", "add", typeTripleData);
       console.log("Type operation tracked:", typeTrackedOp.id);
 
       // Add category attribute
@@ -446,7 +617,7 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
       // Call hook function and track operation
       const categoryResult = addTriple(entityId, categoryAttributeId, { type: "TEXT", value: "Italian" });
       console.log("Food category triple result:", categoryResult);
-      const categoryTrackedOp = trackOperation("triple", "add", categoryTripleData);
+      const categoryTrackedOp = trackOperationWithDetails("triple", "add", categoryTripleData);
       console.log("Category operation tracked:", categoryTrackedOp.id);
 
       // Add tasty attribute
@@ -470,7 +641,7 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
       // Call hook function and track operation
       const tastyResult = addTriple(entityId, tastyAttributeId, { type: "CHECKBOX", value: "true" });
       console.log("Food tasty triple result:", tastyResult);
-      const tastyTrackedOp = trackOperation("triple", "add", tastyTripleData);
+      const tastyTrackedOp = trackOperationWithDetails("triple", "add", tastyTripleData);
       console.log("Tasty operation tracked:", tastyTrackedOp.id);
 
       setCreatedFoodId(entityId);
@@ -660,6 +831,18 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
       setCreatedRelationId(relId);
       setStatus(`Created relation: ${personName} ${relationName} ${foodName}`);
       setWorkflowStep(3);
+
+      // Manually track relation creation operation for better visibility
+      const relationTrackedOp = trackOperationWithDetails("relation", "add", {
+        type: "CREATE_RELATION",
+        relation: {
+          id: relId,
+          from_id: fromEntityId,
+          relation_type_id: relationTypeId,
+          to_id: toEntityId,
+        },
+      });
+      console.log(`Manually tracked relation creation operation:`, relationTrackedOp);
 
       return relId;
     } catch (error) {

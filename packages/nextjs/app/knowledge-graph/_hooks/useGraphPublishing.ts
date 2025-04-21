@@ -752,6 +752,39 @@ export const useGraphPublishing = (initialSpaceId = getDefaultSpaceId()) => {
     console.log(`Publishing ${operations.length} operations to chain`);
     console.log(`Using network: ${network}, smart account: ${useSmartAccount}`);
 
+    // Add detailed operations logging for troubleshooting
+    if (operations.length > 0) {
+      console.log("========== OPERATIONS DETAILS ==========");
+      console.log(`Total operations: ${operations.length}`);
+
+      // Group operations by type for easier analysis
+      const typeGroups: Record<string, number> = {};
+      operations.forEach(op => {
+        const type = op.type || "unknown";
+        typeGroups[type] = (typeGroups[type] || 0) + 1;
+      });
+
+      console.log("Operation types summary:", typeGroups);
+
+      // Log the first operation's complete structure for debugging
+      if (operations[0]) {
+        console.log("First operation complete structure:", JSON.stringify(operations[0], null, 2));
+
+        // Check if operation follows expected structure
+        const hasRequiredFields = operations.every(
+          op =>
+            op.type &&
+            (op.type === "triple" ? op.data?.type === "SET_TRIPLE" || op.data?.type === "DELETE_TRIPLE" : true) &&
+            (op.type === "relation"
+              ? op.data?.type === "CREATE_RELATION" || op.data?.type === "DELETE_RELATION"
+              : true),
+        );
+
+        console.log(`Operations have required fields: ${hasRequiredFields}`);
+      }
+      console.log("========== END OPERATIONS DETAILS ==========");
+    }
+
     try {
       // Step 1: Publish to IPFS
       console.log("Step 1: Publishing to IPFS");
@@ -880,12 +913,33 @@ export const useGraphPublishing = (initialSpaceId = getDefaultSpaceId()) => {
             // Format private key to ensure it has 0x prefix
             const formattedPrivateKey = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
 
+            // Log key information (masked) for debugging
+            console.log(
+              `Using private key: ${formattedPrivateKey.substring(0, 6)}...${formattedPrivateKey.substring(formattedPrivateKey.length - 4)}`,
+            );
+
+            console.log("Getting smart account wallet client...");
             const smartAccountWalletClient = await getSmartAccountWalletClient({
               privateKey: formattedPrivateKey as `0x${string}`,
               // Use custom RPC URL if needed - we'll use the default
             });
 
-            console.log("Smart account wallet client initialized, sending transaction");
+            console.log("Smart account wallet client initialized");
+            console.log("Smart account details:", {
+              address: smartAccountWalletClient.account?.address || "unknown",
+              chainId: smartAccountWalletClient.chain?.id || "unknown",
+              type: "Smart Contract Account",
+            });
+
+            // Log transaction details before sending
+            console.log("Transaction details:", {
+              to: txData.to,
+              dataLength: txData.data.length,
+              dataSample: `${txData.data.substring(0, 50)}...${txData.data.substring(txData.data.length - 50)}`,
+              network,
+            });
+
+            console.log("Sending transaction via smart account...");
             setStatus("Sending transaction via smart account...");
 
             const txResult = await smartAccountWalletClient.sendTransaction({
@@ -897,6 +951,21 @@ export const useGraphPublishing = (initialSpaceId = getDefaultSpaceId()) => {
             });
 
             console.log(`📝 Transaction sent via smart account! Hash: ${txResult}`);
+
+            // Add more transaction details logging
+            console.log("Transaction details:", {
+              hash: txResult,
+              to: txData.to.substring(0, 10) + "...",
+              dataLength: txData.data.length,
+              network,
+              useSmartAccount: true,
+            });
+
+            // Log expected indexing time
+            console.log(
+              "Expected indexing delay: The transaction is confirmed, but it may take a few minutes (typically 2-5 minutes) for the data to be fully indexed and available in the Graph database.",
+            );
+
             updateState(prev => ({
               ...prev,
               txHash: txResult,
