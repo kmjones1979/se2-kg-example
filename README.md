@@ -84,9 +84,13 @@ yarn start
 
 4. Visit http://localhost:3000/knowledge-graph to use the application
 
+> **Note:** The application now defaults to showing the Modern Hooks interface first. You can switch to the Traditional interface using the toggle button in the header.
+
 ### Configuration File Structure
 
 The configuration file includes:
+
+> Note: The API endpoints could change be sure to reference The Graph GRC-20-ts project for updates
 
 ```typescript
 // hypergraph.config.ts
@@ -104,8 +108,8 @@ const hypergraphConfig = {
             description: "The Graph Protocol Testnet API",
         },
         MAINNET: {
-            url: "https://hypergraph.up.railway.app",
-            description: "Hypergraph Railway Mainnet API",
+            url: "https://api-testnet.grc-20.thegraph.com",
+            description: "The Graph Protocol Mainnet API",
         },
     },
 
@@ -1322,7 +1326,7 @@ Operations are batched and published to IPFS before being committed on-chain:
 
 ## Traditional Interface Usage Guide
 
-For those who prefer the traditional interface over hooks, please refer to the [Step-by-Step Tutorial: Creating Entities and Relations](#step-by-step-tutorial-creating-entities-and-relations) section later in this document.
+While the application now defaults to showing the Modern Hooks interface first, you can still access the Traditional interface by clicking the "Switch to Traditional Interface" button in the header. For those who prefer the traditional interface over hooks, please refer to the [Step-by-Step Tutorial: Creating Entities and Relations](#step-by-step-tutorial-creating-entities-and-relations) section later in this document.
 
 ## Configuration System
 
