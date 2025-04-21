@@ -210,6 +210,15 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
     console.log(`Publishing with operation name: ${operationName}`);
     console.log(`Current operations count: ${operationsCount}`);
     console.log(`Operations backup count: ${operationsRef.current.length}`);
+    console.log("MODERN INTERFACE PUBLISH DEBUG:");
+    console.log("Space ID:", spaceId);
+    console.log("Operation name is empty:", !operationName);
+    console.log("Operations count is zero:", operationsCount === 0);
+    console.log("Backup operations count is zero:", operationsRef.current.length === 0);
+    console.log(
+      "Should button be disabled:",
+      !operationName || (operationsCount === 0 && operationsRef.current.length === 0),
+    );
 
     if (!operationName) {
       console.error("No operation name provided");
@@ -246,6 +255,9 @@ export const HookDemoCard = ({ onStatusChange, onOperationsCountChange }: HookDe
           type: op.type || "unknown",
           action: op.action || "unknown",
           id: op.id?.substring(0, 8) || "unknown",
+          entityId: op.entity_id || op.entityId || op.triple?.entityId || "none",
+          attributeId: op.attribute_id || op.attributeId || op.triple?.attributeId || "none",
+          valueType: op.value?.type || (op.triple?.value ? op.triple.value.type : "unknown"),
         })),
       );
 

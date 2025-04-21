@@ -76,7 +76,38 @@ export const PublishCard = ({
               className="btn btn-success w-full"
               onClick={async () => {
                 if (ops.length === 0 || !operationName) return;
-                await publishToChain(ops);
+                console.log("================ ONE-CLICK PUBLISH ================");
+                console.log("Interface: Traditional");
+                console.log("Operation name:", operationName);
+                console.log("Space ID:", spaceId);
+                console.log("Operations count:", ops.length);
+
+                // Transform operations to the correct format
+                const formattedOps = ops.map(op => {
+                  // Convert to the format expected by the SDK
+                  if (op.__typename === "Triple" || op.op === "SetTriple") {
+                    return {
+                      type: "SetTriple",
+                      entity_id: op.entityId,
+                      attribute_id: op.attributeId,
+                      value: op.value,
+                    };
+                  } else if (op.__typename === "Relation" || op.op === "SetRelation") {
+                    return {
+                      type: "SetRelation",
+                      from_id: op.fromId,
+                      relation_type_id: op.relationTypeId,
+                      to_id: op.toId,
+                      id: op.id || undefined,
+                    };
+                  }
+                  return op; // Return as-is if it's already in the right format
+                });
+
+                console.log("Formatted operations:", formattedOps.slice(0, 2));
+                const result = await publishToChain(formattedOps);
+                console.log("Publish result:", result);
+                console.log("================ END ONE-CLICK PUBLISH ================");
               }}
               disabled={ops.length === 0 || !operationName}
             >
@@ -127,6 +158,19 @@ export const PublishCard = ({
                 </svg>
                 Publish to IPFS
               </button>
+
+              {/* Log button disabled state */}
+              <script
+                dangerouslySetInnerHTML={{
+                  __html: `
+                console.log("================ PUBLISH BUTTON STATE ================");
+                console.log("Operations count:", ${ops.length});
+                console.log("Operation name:", "${operationName}");
+                console.log("Button disabled:", ${ops.length === 0 || !operationName});
+                console.log("================ END BUTTON STATE ================");
+              `,
+                }}
+              />
 
               {/* Add status message explaining why button is disabled */}
               {(ops.length === 0 || !operationName) && (
@@ -304,28 +348,36 @@ export const PublishCard = ({
                         Confirmed in block {txReceipt.blockNumber}
                       </span>
                     ) : (
-                      <span className="text-warning flex items-center">
-                        <svg
-                          className="animate-spin h-4 w-4 mr-1"
-                          xmlns="http://www.w3.org/2000/svg"
-                          fill="none"
-                          viewBox="0 0 24 24"
+                      <span className="text-warning flex items-center justify-between">
+                        <div className="flex items-center">
+                          <svg
+                            className="animate-spin h-4 w-4 mr-1"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                          >
+                            <circle
+                              className="opacity-25"
+                              cx="12"
+                              cy="12"
+                              r="10"
+                              stroke="currentColor"
+                              strokeWidth="4"
+                            ></circle>
+                            <path
+                              className="opacity-75"
+                              fill="currentColor"
+                              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                            ></path>
+                          </svg>
+                          Pending...
+                        </div>
+                        <button
+                          className="btn btn-xs"
+                          onClick={() => window.open(`https://etherscan.io/tx/${txHash}`, "_blank")}
                         >
-                          <circle
-                            className="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            strokeWidth="4"
-                          ></circle>
-                          <path
-                            className="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          ></path>
-                        </svg>
-                        Pending...
+                          View on Explorer
+                        </button>
                       </span>
                     )}
                   </div>

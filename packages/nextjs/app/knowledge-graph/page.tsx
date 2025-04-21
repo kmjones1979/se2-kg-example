@@ -196,7 +196,7 @@ const KnowledgeGraph = () => {
   };
 
   // Handle publish to chain function for the TraditionalInterface
-  const handlePublishToChain = async (operations: any[]) => {
+  const handlePublishToChain = async (operations: any[]): Promise<string | `0x${string}` | null> => {
     if (!operations || operations.length === 0) {
       setStatus("No operations to publish");
       return null;
@@ -211,7 +211,8 @@ const KnowledgeGraph = () => {
     );
 
     try {
-      return await publishToChain(operations, connectedAddress, useSmartAccount, geoPrivateKey);
+      const result = await publishToChain(operations, connectedAddress, useSmartAccount, geoPrivateKey);
+      return result || null; // Ensure null is returned if result is undefined
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       setStatus(`Error publishing to chain: ${errorMessage}`);
@@ -235,6 +236,16 @@ const KnowledgeGraph = () => {
     console.log("Raw operations:", getRawOperations());
     console.log("Raw operations length:", getRawOperations().length);
     console.log("Hook demo operations count:", hookDemoOpsCount);
+
+    // Add transaction debugging information
+    console.log("===================== TRANSACTION DATA =====================");
+    console.log("Current interface:", showHookDemo ? "Modern (Hook Demo)" : "Traditional");
+    console.log("Space ID:", spaceId);
+    console.log("Operation name:", operationName);
+    console.log("IPFS CID:", ipfsCid);
+    console.log("Transaction data:", txData);
+    console.log("Transaction hash:", txHash);
+    console.log("Active publishing step:", activeStep);
 
     // Check if our fix from earlier could be used
     if (getRawOperations().length === 0 && directOperations.length > 0) {
