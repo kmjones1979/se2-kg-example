@@ -36,11 +36,11 @@ export const OperationDetailsCard = ({ operationName, setOperationName }: Operat
           <p className="text-sm">
             <span className="font-semibold">Important:</span> The "Publish Operations" button will be disabled until
             you:
-            <ul className="list-disc list-inside mt-1 ml-2">
-              <li className={operationName ? "text-success" : "text-error"}>Enter an operation name above</li>
-              <li>Add at least one operation to the list</li>
-            </ul>
           </p>
+          <ul className="list-disc list-inside mt-1 ml-2 text-sm">
+            <li className={operationName ? "text-success" : "text-error"}>Enter an operation name above</li>
+            <li>Add at least one operation to the list</li>
+          </ul>
         </div>
       </div>
     </div>

@@ -569,76 +569,78 @@ export const useGraphPublishing = (initialSpaceId = getDefaultSpaceId()) => {
     if (!currentState.txData) {
       console.error("No transaction data available!");
       setStatus("No transaction data available. Get call data first.");
-
-      // Additional logging to help debug
-      console.error("No transaction data available, can I increase logging to see the response?", {
-        currentState: { ...currentState },
-        ipfsCidAvailable: !!currentState.ipfsCid,
-        step: currentState.step,
-      });
-
       console.log("========== SEND TRANSACTION END (NO DATA) ==========");
       return null;
     }
 
+    // Try to use smart account first if enabled in config
+    try {
+      // Import getGeoPrivateKey and shouldUseSmartAccount from config
+      const { getGeoPrivateKey, shouldUseSmartAccount } = await import("~~/hypergraph.config");
+
+      const useSmartAccount = shouldUseSmartAccount();
+      const privateKey = getGeoPrivateKey();
+
+      if (useSmartAccount && privateKey) {
+        console.log("Using GEO smart account for transaction");
+        setStatus("Initializing smart account wallet...");
+
+        // Format private key to ensure it has 0x prefix
+        const formattedPrivateKey = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
+
+        try {
+          const smartAccountWalletClient = await getSmartAccountWalletClient({
+            privateKey: formattedPrivateKey as `0x${string}`,
+            // Use custom RPC URL if needed - we'll use the default
+          });
+
+          console.log("Smart account wallet client initialized, sending transaction");
+          setStatus("Sending transaction via smart account...");
+
+          const txResult = await smartAccountWalletClient.sendTransaction({
+            to: currentState.txData.to.startsWith("0x")
+              ? (currentState.txData.to as `0x${string}`)
+              : (`0x${currentState.txData.to}` as `0x${string}`),
+            value: 0n,
+            data: currentState.txData.data.startsWith("0x")
+              ? (currentState.txData.data as `0x${string}`)
+              : (`0x${currentState.txData.data}` as `0x${string}`),
+          });
+
+          console.log(`📝 Transaction sent via smart account! Hash: ${txResult}`);
+          updateState(prev => ({
+            ...prev,
+            txHash: txResult,
+            status: "success",
+            step: 4,
+          }));
+
+          console.log(`New state after successful transaction:`, {
+            step: 4,
+            status: "success",
+            txHash: txResult,
+          });
+          console.log("========== SEND TRANSACTION END (SUCCESS) ==========");
+          return txResult;
+        } catch (smartAccountError) {
+          console.error("Smart account transaction failed:", smartAccountError);
+          const errorMsg = smartAccountError instanceof Error ? smartAccountError.message : String(smartAccountError);
+          setStatus(`Smart account transaction failed: ${errorMsg}`);
+          console.log("Falling back to regular transaction...");
+          // Continue to regular transactor
+        }
+      }
+    } catch (configError) {
+      console.error("Error accessing smart account config:", configError);
+      console.log("Falling back to regular transaction...");
+      // Continue to regular transactor
+    }
+
+    // Fallback to regular transactor if smart account is not used or fails
     if (!transactor) {
       setStatus("Transactor not available");
       console.log("========== SEND TRANSACTION END (NO TRANSACTOR) ==========");
       return null;
-    }
-
-    // Additional validation and logging
-    if (typeof currentState.txData !== "object") {
-      console.error("Transaction data is not an object:", currentState.txData);
-      setStatus("Invalid transaction data format");
-      console.log("========== SEND TRANSACTION END (INVALID DATA FORMAT) ==========");
-      return null;
-    }
-
-    // Check if txData has the required fields
-    if (!currentState.txData.to || !currentState.txData.data) {
-      console.error("Transaction data missing required fields:", {
-        hasTo: !!currentState.txData.to,
-        hasData: !!currentState.txData.data,
-        txData: currentState.txData,
-      });
-
-      // Attempt to parse or fix transaction data if it's in a different format
-      try {
-        // If the object has different field names or structure, try to extract the needed data
-        const txDataAny = currentState.txData as any; // Type as any to allow for different field structures
-        const extractedData = {
-          to: txDataAny.to || txDataAny.address || txDataAny.contractAddress,
-          data: txDataAny.data || txDataAny.calldata || txDataAny.txData,
-        };
-
-        console.log("Attempting to extract transaction data from non-standard format:", extractedData);
-
-        if (extractedData.to && extractedData.data) {
-          console.log("Successfully extracted transaction data from non-standard format:", extractedData);
-
-          // Proceed with the extracted data
-          updateState(prev => ({
-            ...prev,
-            txData: extractedData,
-            status: "Extracted transaction data from non-standard format",
-          }));
-
-          // Continue with the extracted data
-          // Note: We need to use the extracted data directly since state updates are async
-          return sendTransactionWithData(extractedData);
-        } else {
-          console.error("Could not extract valid transaction data");
-          setStatus("Could not extract valid transaction data");
-          console.log("========== SEND TRANSACTION END (EXTRACTION FAILED) ==========");
-          return null;
-        }
-      } catch (err) {
-        console.error("Failed to parse alternative transaction data format:", err);
-        setStatus("Invalid transaction data format");
-        console.log("========== SEND TRANSACTION END (PARSE ERROR) ==========");
-        return null;
-      }
     }
 
     // Use the current txData to send the transaction
@@ -773,14 +775,76 @@ export const useGraphPublishing = (initialSpaceId = getDefaultSpaceId()) => {
           step: 2,
         }));
         console.log("Forced state update to ensure IPFS CID is set correctly");
+
+        // IMPORTANT: Wait for state update to propagate before proceeding
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       console.log(`Successfully published to IPFS: ${cid}`);
 
       // Step 2: Get call data
       console.log("Step 2: Getting call data");
+
+      // Use the CID directly rather than relying on state
       try {
-        const txData = await getCallData(network);
+        // Instead of using getCallData(), which relies on state,
+        // we'll make a direct call to get transaction data using the CID we have
+        console.log(`Directly using CID: ${cid} for call data`);
+
+        // Create the request to get call data
+        const apiEndpoint = getCalldataApiUrl(currentStateRef.current.spaceId, network);
+        console.log(`Using API endpoint: ${apiEndpoint}`);
+
+        let txData;
+
+        // Use mock data if configured
+        if (shouldUseMockData()) {
+          console.log("Using mock transaction data (development only)");
+          txData = getMockTxData();
+        } else {
+          // Make the API call with the CID we have
+          const response = await fetch("/api/knowledge-graph-api/calldata", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              spaceId: currentStateRef.current.spaceId,
+              cid: cid, // Use the CID directly
+              network,
+            }),
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error("API error:", {
+              status: response.status,
+              statusText: response.statusText,
+              errorText,
+            });
+            throw new Error(`API error: ${response.status} ${response.statusText}`);
+          }
+
+          const data = await response.json();
+          console.log("Calldata response received:", data);
+
+          // Extract transaction data
+          if (data.calldata && data.calldata.to && data.calldata.data) {
+            txData = {
+              to: data.calldata.to,
+              data: data.calldata.data,
+            };
+          } else if (data.to && data.data) {
+            txData = {
+              to: data.to,
+              data: data.data,
+            };
+          } else {
+            console.error("Invalid response format - missing transaction data:", data);
+            throw new Error("Invalid response format - missing transaction data fields");
+          }
+        }
+
         if (!txData) {
           console.error("Failed to get call data");
           setStatus("Failed to get transaction data from API");
@@ -788,18 +852,16 @@ export const useGraphPublishing = (initialSpaceId = getDefaultSpaceId()) => {
           return null;
         }
 
-        // Verify the txData was set correctly in state
-        if (!currentStateRef.current.txData) {
-          console.warn("⚠️ txData not set in state despite successful call data fetch");
-          // Force update the state to ensure consistency
-          updateState(prev => ({
-            ...prev,
-            txData,
-            status: "Call data ready (recovered)",
-            step: 3,
-          }));
-          console.log("Forced state update to ensure txData is set correctly");
-        }
+        // Update state with the transaction data
+        updateState(prev => ({
+          ...prev,
+          txData,
+          status: "Call data ready",
+          step: 3,
+        }));
+
+        // Wait for state update to propagate
+        await new Promise(resolve => setTimeout(resolve, 100));
 
         console.log("Successfully retrieved call data:", {
           to: txData.to.substring(0, 10) + "...",

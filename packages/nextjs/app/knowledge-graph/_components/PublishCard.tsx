@@ -1,3 +1,5 @@
+import { shouldUseSmartAccount } from "~~/hypergraph.config";
+
 interface PublishCardProps {
   ipfsCid: string;
   txData: { to: string; data: string } | null;
@@ -27,10 +29,45 @@ export const PublishCard = ({
   operationName,
   spaceId,
 }: PublishCardProps) => {
+  // Check if we're using a smart account
+  const usingSmartAccount = shouldUseSmartAccount();
+
   return (
     <div className="card bg-base-100 shadow-xl mb-8">
       <div className="card-body">
         <h2 className="card-title mb-4">Publish and Execute</h2>
+
+        {/* Smart account status badge */}
+        <div className="mb-4 flex justify-between items-center">
+          <div className="badge badge-outline">
+            {usingSmartAccount ? (
+              <span className="flex items-center gap-1 text-success">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                Using GEO Smart Account
+              </span>
+            ) : (
+              <span className="flex items-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                Using Regular Wallet
+              </span>
+            )}
+          </div>
+          <div className="badge badge-info">
+            {process.env.NEXT_PUBLIC_USE_TESTNET === "true" ? "TESTNET" : "MAINNET"}
+          </div>
+        </div>
 
         {/* Smart account one-click publish button */}
         {publishToChain && (
@@ -50,11 +87,11 @@ export const PublishCard = ({
                   clipRule="evenodd"
                 />
               </svg>
-              Publish Operations with Smart Account
+              {usingSmartAccount ? "Publish with GEO Smart Account (One-Click)" : "Publish Operations (One-Click)"}
             </button>
             <div className="text-sm mt-2 opacity-70 text-center">
-              This will automatically publish to IPFS, get transaction data, and send the transaction in one step using
-              a GEO smart account
+              This will automatically publish to IPFS, get transaction data, and send the transaction in one step
+              {usingSmartAccount && " using a GEO smart account"}
             </div>
           </div>
         )}

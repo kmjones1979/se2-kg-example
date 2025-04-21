@@ -26,6 +26,7 @@ interface HypergraphConfig {
 
   // Smart account settings
   useSmartAccount: boolean;
+  // You can get your private key using https://www.geobrowser.io/export-wallet
   geoPrivateKey: string;
 
   // Mock data for fallback
@@ -82,8 +83,9 @@ const hypergraphConfig: HypergraphConfig = {
   useMockData: process.env.NODE_ENV === "development" && process.env.USE_MOCK_DATA === "true",
 
   // Smart account settings
-  useSmartAccount: true, // Set to true to always use smart account by default
-  geoPrivateKey: process.env.GEO_PRIVATE_KEY || "", // Get private key from environment variable
+  useSmartAccount: true, // Set to true to use smart account wallet by default
+  // You can get your private key using https://www.geobrowser.io/export-wallet
+  geoPrivateKey: process.env.NEXT_PUBLIC_GEO_PRIVATE_KEY || process.env.GEO_PRIVATE_KEY || "", // Get private key from environment variable
 
   mockData: {
     txData: {
@@ -172,10 +174,97 @@ export const shouldUseSmartAccount = (): boolean => {
 };
 
 /**
+ * Validate and fix private key format
+ * @param key The private key to validate
+ * @returns An object with the fixed key and validation info
+ */
+const validateAndFixPrivateKey = (
+  key: string,
+): {
+  key: string;
+  isValid: boolean;
+  message: string;
+} => {
+  if (!key || key.trim() === "") {
+    return {
+      key: "",
+      isValid: false,
+      message: "Private key is empty",
+    };
+  }
+
+  // Remove any whitespace
+  let cleanKey = key.trim();
+
+  // Check if key has 0x prefix, add if missing
+  if (!cleanKey.startsWith("0x")) {
+    cleanKey = `0x${cleanKey}`;
+    console.log("Added 0x prefix to private key");
+  }
+
+  // Remove 0x prefix to check the hex part length
+  const hexPart = cleanKey.substring(2);
+
+  // Check if key contains only hex characters
+  const validHexRegex = /^[0-9a-fA-F]+$/;
+  if (!validHexRegex.test(hexPart)) {
+    return {
+      key: cleanKey,
+      isValid: false,
+      message: "Private key contains non-hex characters",
+    };
+  }
+
+  // Check key length
+  if (hexPart.length < 64) {
+    return {
+      key: cleanKey,
+      isValid: false,
+      message: `Private key too short: ${hexPart.length} chars, expected 64`,
+    };
+  } else if (hexPart.length > 64) {
+    // Key might be too long, try to extract the correct portion
+    console.warn(`Private key too long: ${hexPart.length} chars, will attempt to truncate to 64`);
+    cleanKey = `0x${hexPart.substring(0, 64)}`;
+    return {
+      key: cleanKey,
+      isValid: true,
+      message: "Private key was too long and has been truncated to 64 characters",
+    };
+  }
+
+  return {
+    key: cleanKey,
+    isValid: true,
+    message: "Private key is valid",
+  };
+};
+
+/**
  * Get GEO private key
  */
 export const getGeoPrivateKey = (): string => {
-  return hypergraphConfig.geoPrivateKey;
+  // Try to get the private key from environment variables
+  const rawPrivateKey = process.env.NEXT_PUBLIC_GEO_PRIVATE_KEY || process.env.GEO_PRIVATE_KEY || "";
+
+  // Validate and potentially fix the key
+  const { key, isValid, message } = validateAndFixPrivateKey(rawPrivateKey);
+
+  // For debugging
+  if (process.env.NODE_ENV === "development") {
+    if (!key) {
+      console.warn("⚠️ No GEO private key found in environment variables. Smart account transactions will fail.");
+      console.warn("Set NEXT_PUBLIC_GEO_PRIVATE_KEY in your .env.local file.");
+    } else if (!isValid) {
+      console.warn(`⚠️ ${message}`);
+      console.warn("Please check your private key format in .env.local");
+    } else {
+      // Don't log the actual key, just that it was found and is valid
+      console.log(`✅ GEO private key found: ${message}`);
+    }
+  }
+
+  return key;
 };
 
 export default hypergraphConfig;

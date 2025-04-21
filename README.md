@@ -53,6 +53,7 @@ This application allows you to create, manage and publish knowledge graph data t
 -   [Configuration System](#configuration-system)
 -   [Getting Started](#getting-started)
 -   [Resources](#resources)
+-   [GEO Smart Account Integration](#geo-smart-account-integration)
 
 ## Getting Started
 
@@ -119,6 +120,10 @@ const hypergraphConfig = {
         process.env.NODE_ENV === "development" &&
         process.env.USE_MOCK_DATA === "true",
 
+    // Smart account settings
+    useSmartAccount: true, // Set to true to always use smart account by default
+    geoPrivateKey: process.env.GEO_PRIVATE_KEY || "", // Get private key from environment variable
+
     // Mock data for fallback
     mockData: {
         txData: {
@@ -141,6 +146,8 @@ import hypergraphConfig, {
     getDefaultSpaceId,
     getDefaultNetwork,
     shouldUseMockData,
+    shouldUseSmartAccount,
+    getGeoPrivateKey,
 } from "~~/hypergraph.config";
 
 // Get the API endpoint for a network
@@ -150,6 +157,14 @@ const apiUrl = getApiEndpoint("MAINNET");
 // Get the full calldata API URL for a space and network
 const calldataUrl = getCalldataApiUrl("YOUR_SPACE_ID", "MAINNET");
 // => "https://hypergraph.up.railway.app/space/YOUR_SPACE_ID/edit/calldata"
+
+// Check if smart account should be used
+const useSmartAccount = shouldUseSmartAccount();
+// => true (or whatever is set in the config)
+
+// Get the GEO private key
+const geoPrivateKey = getGeoPrivateKey();
+// => The private key from environment variable GEO_PRIVATE_KEY
 ```
 
 ## Hooks Documentation
@@ -232,10 +247,48 @@ const {
     publishToChain, // Complete publishing flow (IPFS → Call Data → Transaction)
 } = useGraphPublishing("YOUR_SPACE_ID");
 
-// Example: Complete publishing workflow
+// Example: Complete publishing workflow with a regular wallet
 const handlePublish = async () => {
     const rawOperations = operations.map((op) => op.data);
     const result = await publishToChain(rawOperations, "0xYourWalletAddress");
+
+    if (result) {
+        console.log(`Publication successful! Transaction hash: ${result}`);
+    }
+};
+
+// Example: Complete publishing workflow with a GEO smart account
+const handlePublishWithSmartAccount = async () => {
+    const rawOperations = operations.map((op) => op.data);
+    // Use smart account by setting useSmartAccount to true and providing private key
+    const result = await publishToChain(
+        rawOperations,
+        "0xYourWalletAddress",
+        true, // useSmartAccount
+        "0xYourGeoPrivateKey" // privateKey
+    );
+
+    if (result) {
+        console.log(
+            `Publication successful with smart account! Transaction hash: ${result}`
+        );
+    }
+};
+
+// Example: Get smart account settings from config
+import { shouldUseSmartAccount, getGeoPrivateKey } from "~~/hypergraph.config";
+
+const handlePublishWithConfigSettings = async () => {
+    const rawOperations = operations.map((op) => op.data);
+    const useSmartAccount = shouldUseSmartAccount();
+    const geoPrivateKey = getGeoPrivateKey();
+
+    const result = await publishToChain(
+        rawOperations,
+        "0xYourWalletAddress",
+        useSmartAccount,
+        geoPrivateKey
+    );
 
     if (result) {
         console.log(`Publication successful! Transaction hash: ${result}`);
@@ -641,14 +694,41 @@ import { PublishCard } from "~/app/knowledge-graph/_components/PublishCard";
 
 // Inside your component render
 <PublishCard
-    operations={operations}
-    onOperationNameChange={(name) => setOperationName(name)}
-    onPublishToIPFS={handlePublishToIPFS}
-    onGetCallData={handleGetCallData}
-    onSendTransaction={handleSendTransaction}
-    publishingState={publishingState}
+    ipfsCid={ipfsCid}
+    txData={txData}
+    txHash={txHash}
+    txReceipt={txReceipt}
+    activeStep={activeStep}
+    publishToIPFS={handlePublishToIPFS}
+    getCallData={handleGetCallData}
+    sendTransaction={handleSendTransaction}
+    publishToChain={handlePublishToChain} // Optional - enables one-click smart account publishing
+    ops={operations}
+    operationName={operationName}
+    spaceId={spaceId}
 />;
+
+// Example handler for publishToChain
+const handlePublishToChain = async (operations) => {
+    // Get smart account configuration from hypergraph config
+    const useSmartAccount = shouldUseSmartAccount();
+    const geoPrivateKey = getGeoPrivateKey();
+
+    try {
+        return await publishToChain(
+            operations,
+            walletAddress,
+            useSmartAccount,
+            geoPrivateKey
+        );
+    } catch (error) {
+        console.error("Error publishing to chain:", error);
+        return null;
+    }
+};
 ```
+
+When the `publishToChain` prop is provided, the component will display a one-click "Publish Operations with Smart Account" button that combines all publishing steps into a single action.
 
 ### ExpandableCard
 
@@ -1018,8 +1098,8 @@ const createLikesRelation = () => {
 Next, let's implement the publishing functions, taking care to handle only SDK-compatible data:
 
 ```tsx
-// Publish operations to IPFS
-const handlePublishToIPFS = async () => {
+// Publish all operations to IPFS and blockchain
+const handlePublish = async () => {
     if (operations.length === 0) {
         setStatus("No operations to publish");
         return;
@@ -1029,63 +1109,42 @@ const handlePublishToIPFS = async () => {
     setOperationName("Alice Likes Pizza Example");
 
     try {
-        setStatus("Publishing to IPFS...");
-        // IMPORTANT: Get only the data field from operations, not the metadata
+        setStatus("Publishing to blockchain...");
+        // Get only the data field from operations, not the metadata
         const rawOps = operations.map((op) => op.data);
-        const ipfsCid = await publishToIPFS(rawOps);
 
-        if (ipfsCid) {
-            setStatus(`Published to IPFS: ${ipfsCid}`);
+        // Get smart account configuration
+        const useSmartAccount = shouldUseSmartAccount();
+        const geoPrivateKey = getGeoPrivateKey();
+
+        // Use one-step publishing with smart account if configured
+        if (useSmartAccount && geoPrivateKey) {
+            console.log("Using smart account for publishing");
+            const txHash = await publishToChain(
+                rawOps,
+                connectedAddress,
+                useSmartAccount,
+                geoPrivateKey
+            );
+
+            if (txHash) {
+                setStatus(`Transaction sent with smart account: ${txHash}`);
+                return;
+            } else {
+                setStatus("Failed to publish with smart account");
+            }
         } else {
-            setStatus("Failed to publish to IPFS");
+            // Fallback to manual three-step process
+            console.log("Using manual publishing process");
+            await handlePublishToIPFS();
         }
     } catch (error) {
         setStatus(
-            `IPFS error: ${
+            `Publishing error: ${
                 error instanceof Error ? error.message : String(error)
             }`
         );
-        console.error("IPFS error:", error);
-    }
-};
-
-// Get transaction data for the published operations
-const handleGetTransactionData = async () => {
-    try {
-        setStatus("Getting transaction data...");
-        const data = await getCallData();
-
-        if (data) {
-            setStatus("Transaction data ready");
-        } else {
-            setStatus("Failed to get transaction data");
-        }
-    } catch (error) {
-        setStatus(
-            `Transaction data error: ${
-                error instanceof Error ? error.message : String(error)
-            }`
-        );
-    }
-};
-
-// Send the transaction to the blockchain
-const handleSendTransaction = async () => {
-    try {
-        setStatus("Sending transaction...");
-        const txHash = await sendTransaction();
-
-        if (txHash) {
-            setStatus(`Transaction sent: ${txHash}`);
-        } else {
-            setStatus("Failed to send transaction");
-        }
-    } catch (error) {
-        setStatus(
-            `Transaction error: ${
-                error instanceof Error ? error.message : String(error)
-            }`
-        );
+        console.error("Publishing error:", error);
     }
 };
 
@@ -1104,6 +1163,9 @@ const runFullDemo = () => {
 
     // Finally create the relation
     createLikesRelation();
+
+    // Set operation name for publishing
+    setOperationName("Alice Likes Pizza Demo");
 };
 ```
 
@@ -1195,7 +1257,7 @@ return (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <button
                     className="btn btn-secondary"
-                    onClick={handlePublishToIPFS}
+                    onClick={handlePublish}
                     disabled={operations.length === 0}
                 >
                     1. Publish to IPFS
@@ -1341,6 +1403,58 @@ While the application now defaults to showing the Modern Hooks interface first, 
 ## Configuration System
 
 The application uses a centralized configuration system through `hypergraph.config.ts` located in the NextJS package root. This provides a single source of truth for all hypergraph-related settings.
+
+## GEO Smart Account Integration
+
+The application supports using GEO smart accounts for publishing operations to the chain, which can simplify the transaction process.
+
+### Setting Up Your GEO Private Key
+
+To use a GEO smart account, you need to:
+
+1. Get your GEO private key from <https://www.geobrowser.io/export-wallet>
+2. Set it as an environment variable:
+
+```bash
+# In your .env file
+GEO_PRIVATE_KEY=your_private_key_here
+```
+
+3. Make sure `useSmartAccount` is set to `true` in your hypergraph.config.ts file (enabled by default).
+
+### Using Smart Accounts in the UI
+
+The application provides two ways to publish operations using smart accounts:
+
+1. **One-Click Publish**: The Traditional Interface now includes a "Publish Operations with Smart Account" button that combines all publishing steps.
+
+2. **Step-by-Step Process**: You can still use the manual three-step process (IPFS → Get Transaction Data → Send Transaction) if you need more control.
+
+### Programmatic Smart Account Usage
+
+```typescript
+import { useGraphPublishing } from "~/app/knowledge-graph/_hooks";
+import { shouldUseSmartAccount, getGeoPrivateKey } from "~~/hypergraph.config";
+
+// Inside your component
+const { publishToChain } = useGraphPublishing();
+const useSmartAccount = shouldUseSmartAccount();
+const geoPrivateKey = getGeoPrivateKey();
+
+// Publish operations with smart account
+const handlePublish = async () => {
+    const result = await publishToChain(
+        operations,
+        walletAddress,
+        useSmartAccount,
+        geoPrivateKey
+    );
+
+    if (result) {
+        console.log(`Transaction successful: ${result}`);
+    }
+};
+```
 
 ## Resources
 
