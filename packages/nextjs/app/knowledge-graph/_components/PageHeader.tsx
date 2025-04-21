@@ -16,7 +16,7 @@ export const PageHeader = ({ title, subtitle, showHookDemo, setShowHookDemo }: P
         <p className="text-center text-sm md:text-base opacity-90">{subtitle}</p>
         <div className="flex justify-center mt-2">
           <button onClick={() => setShowHookDemo(!showHookDemo)} className="btn btn-sm btn-outline btn-accent">
-            {showHookDemo ? "Switch to Traditional Interface" : "Try Modern Hooks Interface"}
+            {showHookDemo ? "Switch to Traditional Interface" : "Switch to Modern Hooks Interface"}
           </button>
         </div>
       </div>

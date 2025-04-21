@@ -42,11 +42,11 @@ const hypergraphConfig: HypergraphConfig = {
   endpoints: {
     TESTNET: {
       url: "https://api-testnet.grc-20.thegraph.com",
-      description: "The Graph Protocol Testnet API",
+      description: "The Graph Protocol GRC-20 Testnet API",
     },
     MAINNET: {
-      url: "https://hypergraph.up.railway.app",
-      description: "Hypergraph Railway Mainnet API",
+      url: "https://api-testnet.grc-20.thegraph.com",
+      description: "The Graph Protocol GRC-20 Mainnet API",
     },
   },
 
